@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가락 가라지 — 예약영상 고정댓글 자동화</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Malgun Gothic", sans-serif;
+    background: #f7f5f2;
+    color: #2b2620;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #8a7f6f; font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: #fff;
+    border: 1px solid #e8e2d8;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 14px;
+    margin: 0 0 10px;
+    color: #6b5b45;
+    display: flex; align-items: center; gap: 6px;
+  }
+  input[type=text], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd4c5;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 8px;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  button {
+    background: #6b5b45;
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { background: #5a4b38; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  button.secondary { background: #b5a385; }
+  button.danger { background: #a85c4a; }
+  .status {
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+    white-space: pre-wrap;
+  }
+  .status.ok { background: #eaf3ea; color: #2f6b3a; }
+  .status.err { background: #fbeaea; color: #a83a3a; }
+  .status.info { background: #eef1f7; color: #3a4d7a; }
+  .video-info {
+    display: none;
+    background: #faf8f4;
+    border: 1px solid #eee1c8;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .video-info b { color: #6b5b45; }
+  .hint { font-size: 12px; color: #9a8f7c; margin-top: 4px; }
+  .step-num {
+    display: inline-block;
+    background: #6b5b45;
+    color: #fff;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    font-size: 11px;
+    text-align: center;
+    line-height: 18px;
+  }
+  a { color: #6b5b45; }
+</style>
+</head>
+<body>
+
+<h1>🎵 가락 가라지 — 예약영상 고정댓글 자동화</h1>
+<div class="sub">일부공개 트릭: 비공개(예약) → 일부공개 전환 → 댓글 작성 → (직접 고정) → 공개 전환</div>
+
+<div class="card">
+  <h2>0️⃣ 구글 로그인 연결</h2>
+  <input type="text" id="clientId" placeholder="구글 클라이언트 ID 붙여넣기 (xxxx.apps.googleusercontent.com)">
+  <button onclick="saveClientIdAndInit()">클라이언트 ID 저장</button>
+  <button id="loginBtn" class="secondary" onclick="doLogin()" disabled>Google 로그인</button>
+  <div id="loginStatus" class="status info" style="display:none"></div>
+  <div class="hint">클라이언트 ID는 브라우저에만 저장되고 외부로 전송되지 않습니다. 로그인 시 구글이 "확인되지 않은 앱" 경고를 띄울 수 있는데, 본인이 만든 앱이므로 "고급" → "이동(안전하지 않음)"으로 진행하시면 됩니다.</div>
+</div>
+
+<div class="card">
+  <h2><span class="step-num">1</span> 영상 불러오기</h2>
+  <input type="text" id="videoUrl" placeholder="유튜브 영상 링크 또는 영상 ID 붙여넣기">
+  <button onclick="loadVideoInfo()">영상 정보 확인</button>
+  <div class="video-info" id="videoInfo"></div>
+</div>
+
+<div class="card">
+  <h2><span class="step-num">2</span> 일부공개로 전환 + 댓글 작성</h2>
+  <textarea id="commentText" placeholder="고정할 댓글 문구를 입력하세요..."></textarea>
+  <button onclick="doStep2()">① 일부공개 전환 + 댓글 등록</button>
+  <div id="step2Status" class="status" style="display:none"></div>
+  <div class="hint">이 버튼을 누르면: (1) 영상 상태를 '일부공개'로 바꾸고 → (2) 위에 입력한 댓글을 자동으로 답니다. 완료 후 아래 링크로 이동해서 <b>직접 댓글을 고정</b>해주세요.</div>
+  <div id="studioLink" style="margin-top:8px;display:none"></div>
+</div>
+
+<div class="card">
+  <h2><span class="step-num">3</span> 공개로 최종 전환</h2>
+  <p style="font-size:13px;color:#8a7f6f;margin:0 0 10px">댓글 고정까지 마치셨으면 눌러주세요. 영상이 즉시 공개됩니다.</p>
+  <button class="danger" onclick="doStep3()">② 지금 공개로 전환</button>
+  <div id="step3Status" class="status" style="display:none"></div>
+</div>
+
+<script>
+const SCOPES = 'https://www.googleapis.com/auth/youtube.force-ssl';
+let tokenClient = null;
+let accessToken = null;
+let currentVideoId = null;
+
+function saveClientIdAndInit() {
+  const id = document.getElementById('clientId').value.trim();
+  if (!id) { alert('클라이언트 ID를 입력해주세요.'); return; }
+  localStorage.setItem('gg_client_id', id);
+  initGoogleAuth(id);
+}
+
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('gg_client_id');
+  if (saved) {
+    document.getElementById('clientId').value = saved;
+    // GIS 스크립트 로드 대기 후 초기화
+    const wait = setInterval(() => {
+      if (window.google && google.accounts) {
+        clearInterval(wait);
+        initGoogleAuth(saved);
+      }
+    }, 200);
+  }
+});
+
+function initGoogleAuth(clientId) {
+  if (!window.google || !google.accounts) {
+    showStatus('loginStatus', 'info', 'Google 로그인 스크립트 로딩 중... 잠시 후 다시 시도해주세요.');
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        showStatus('loginStatus', 'err', '로그인 실패: ' + resp.error);
+        return;
+      }
+      accessToken = resp.access_token;
+      showStatus('loginStatus', 'ok', '✅ 로그인 완료. 이제 아래 단계를 진행하세요.');
+    }
+  });
+  document.getElementById('loginBtn').disabled = false;
+  showStatus('loginStatus', 'info', '클라이언트 ID 저장됨. "Google 로그인" 버튼을 눌러주세요.');
+}
+
+function doLogin() {
+  if (!tokenClient) { alert('먼저 클라이언트 ID를 저장해주세요.'); return; }
+  tokenClient.requestAccessToken();
+}
+
+function showStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = 'status ' + type;
+  el.style.display = 'block';
+  el.textContent = msg;
+}
+
+function extractVideoId(input) {
+  input = input.trim();
+  // shorts URL
+  let m = input.match(/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  // watch?v=
+  m = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  // youtu.be/
+  m = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  // 순수 ID로 보이는 경우
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+  return null;
+}
+
+async function ytFetch(url, options = {}) {
+  if (!accessToken) throw new Error('먼저 Google 로그인을 해주세요.');
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error((data.error && data.error.message) || ('요청 실패 (' + res.status + ')'));
+  }
+  return data;
+}
+
+async function loadVideoInfo() {
+  const raw = document.getElementById('videoUrl').value;
+  const id = extractVideoId(raw);
+  if (!id) { alert('영상 링크 또는 ID를 정확히 입력해주세요.'); return; }
+  currentVideoId = id;
+  try {
+    const data = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=${id}`);
+    if (!data.items || !data.items.length) throw new Error('영상을 찾을 수 없습니다. 본인 채널 영상이 맞는지, 로그인 계정이 맞는지 확인해주세요.');
+    const v = data.items[0];
+    const box = document.getElementById('videoInfo');
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div><b>제목:</b> ${v.snippet.title}</div>
+      <div><b>현재 공개 상태:</b> ${v.status.privacyStatus}</div>
+      <div><b>예약 공개 시각:</b> ${v.status.publishAt || '없음'}</div>
+    `;
+  } catch (e) {
+    alert('오류: ' + e.message);
+  }
+}
+
+async function doStep2() {
+  if (!currentVideoId) { alert('먼저 영상 정보를 확인해주세요.'); return; }
+  const comment = document.getElementById('commentText').value.trim();
+  if (!comment) { alert('댓글 문구를 입력해주세요.'); return; }
+  showStatus('step2Status', 'info', '진행 중...');
+  try {
+    // 1) 일부공개로 전환
+    await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
+      method: 'PUT',
+      body: JSON.stringify({ id: currentVideoId, status: { privacyStatus: 'unlisted' } })
+    });
+    // 2) 댓글 작성
+    const channelData = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true');
+    const myChannelId = channelData.items[0].id;
+    await ytFetch('https://www.googleapis.com/youtube/v3/commentThreads?part=snippet', {
+      method: 'POST',
+      body: JSON.stringify({
+        snippet: {
+          channelId: myChannelId,
+          videoId: currentVideoId,
+          topLevelComment: { snippet: { textOriginal: comment } }
+        }
+      })
+    });
+    showStatus('step2Status', 'ok', '✅ 일부공개 전환 + 댓글 작성 완료!\n이제 아래 링크로 가서 댓글을 직접 고정해주세요.');
+    const linkBox = document.getElementById('studioLink');
+    linkBox.style.display = 'block';
+    linkBox.innerHTML = `<a href="https://www.youtube.com/watch?v=${currentVideoId}" target="_blank">▶ 영상 보러가기 (댓글 고정하러 가기)</a>`;
+  } catch (e) {
+    showStatus('step2Status', 'err', '❌ 오류: ' + e.message);
+  }
+}
+
+async function doStep3() {
+  if (!currentVideoId) { alert('먼저 영상 정보를 확인해주세요.'); return; }
+  if (!confirm('영상을 지금 즉시 공개로 전환합니다. 댓글 고정을 마치셨나요?')) return;
+  showStatus('step3Status', 'info', '진행 중...');
+  try {
+    await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
+      method: 'PUT',
+      body: JSON.stringify({ id: currentVideoId, status: { privacyStatus: 'public' } })
+    });
+    showStatus('step3Status', 'ok', '✅ 공개 전환 완료! 영상이 지금 모두에게 공개됩니다.');
+  } catch (e) {
+    showStatus('step3Status', 'err', '❌ 오류: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
