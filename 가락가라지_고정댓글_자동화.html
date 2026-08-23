@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>가락 가라지 — 예약영상 고정댓글 자동화</title>
+<title>가락 가라지 — 예약영상 일괄 고정댓글 자동화</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   * { box-sizing: border-box; }
@@ -11,7 +11,7 @@
     font-family: -apple-system, "Malgun Gothic", sans-serif;
     background: #f7f5f2;
     color: #2b2620;
-    max-width: 720px;
+    max-width: 860px;
     margin: 0 auto;
     padding: 24px 16px 80px;
     line-height: 1.6;
@@ -40,7 +40,7 @@
     font-family: inherit;
     margin-bottom: 8px;
   }
-  textarea { min-height: 90px; resize: vertical; }
+  textarea { min-height: 110px; resize: vertical; font-family: "Consolas", monospace; font-size: 13px; }
   button {
     background: #6b5b45;
     color: #fff;
@@ -65,16 +65,6 @@
   .status.ok { background: #eaf3ea; color: #2f6b3a; }
   .status.err { background: #fbeaea; color: #a83a3a; }
   .status.info { background: #eef1f7; color: #3a4d7a; }
-  .video-info {
-    display: none;
-    background: #faf8f4;
-    border: 1px solid #eee1c8;
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-  .video-info b { color: #6b5b45; }
   .hint { font-size: 12px; color: #9a8f7c; margin-top: 4px; }
   .step-num {
     display: inline-block;
@@ -87,12 +77,28 @@
     line-height: 18px;
   }
   a { color: #6b5b45; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #eee1c8; padding: 8px 6px; text-align: left; vertical-align: top; }
+  th { color: #6b5b45; font-weight: 600; background: #faf8f4; }
+  td.title { max-width: 160px; }
+  td.comment { max-width: 200px; color: #6b5b45; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.wait { background: #eee; color: #888; }
+  .badge.doing { background: #eef1f7; color: #3a4d7a; }
+  .badge.done { background: #eaf3ea; color: #2f6b3a; }
+  .badge.fail { background: #fbeaea; color: #a83a3a; }
 </style>
 </head>
 <body>
 
-<h1>🎵 가락 가라지 — 예약영상 고정댓글 자동화</h1>
-<div class="sub">일부공개 트릭: 비공개(예약) → 일부공개 전환 → 댓글 작성 → (직접 고정) → 공개 전환</div>
+<h1>🎵 가락 가라지 — 예약영상 일괄 고정댓글 자동화</h1>
+<div class="sub">일부공개 트릭: 비공개(예약) → 일부공개 전환 → 댓글 작성 → (직접 고정) → 공개 전환 · 여러 영상 한 번에 처리</div>
 
 <div class="card">
   <h2>0️⃣ 구글 로그인 연결</h2>
@@ -100,29 +106,42 @@
   <button onclick="saveClientIdAndInit()">클라이언트 ID 저장</button>
   <button id="loginBtn" class="secondary" onclick="doLogin()" disabled>Google 로그인</button>
   <div id="loginStatus" class="status info" style="display:none"></div>
-  <div class="hint">클라이언트 ID는 브라우저에만 저장되고 외부로 전송되지 않습니다. 로그인 시 구글이 "확인되지 않은 앱" 경고를 띄울 수 있는데, 본인이 만든 앱이므로 "고급" → "이동(안전하지 않음)"으로 진행하시면 됩니다.</div>
 </div>
 
 <div class="card">
-  <h2><span class="step-num">1</span> 영상 불러오기</h2>
-  <input type="text" id="videoUrl" placeholder="유튜브 영상 링크 또는 영상 ID 붙여넣기">
-  <button onclick="loadVideoInfo()">영상 정보 확인</button>
-  <div class="video-info" id="videoInfo"></div>
+  <h2><span class="step-num">1</span> 영상 목록 불러오기</h2>
+  <textarea id="videoList" placeholder="한 줄에 영상 하나씩 입력하세요.
+형식: 유튜브링크 | 댓글문구
+
+예시:
+https://youtu.be/abc12345678 | &quot;사랑은 잔영이라&quot;… 노을 아래 그리움하는 밤. 🌅
+https://youtu.be/xyz98765432 | &quot;못 잡은 너를 밤에 부치네&quot;… 강물에 실려가는 밤. 🌅
+
+댓글문구를 안 쓰고 링크만 넣으면, 아래 '공통 댓글'을 대신 사용합니다."></textarea>
+  <input type="text" id="defaultComment" placeholder="공통 댓글 (댓글문구 생략한 줄에 사용됨, 선택)">
+  <button onclick="loadVideoList()">목록 불러오기 (제목·상태 확인)</button>
+  <div id="listStatus" class="status" style="display:none"></div>
+  <div id="tableWrap" style="display:none;overflow-x:auto">
+    <table id="videoTable">
+      <thead>
+        <tr><th>#</th><th>제목</th><th>현재상태</th><th>댓글 미리보기</th><th>진행상태</th><th>바로가기</th></tr>
+      </thead>
+      <tbody id="videoTbody"></tbody>
+    </table>
+  </div>
 </div>
 
 <div class="card">
-  <h2><span class="step-num">2</span> 일부공개로 전환 + 댓글 작성</h2>
-  <textarea id="commentText" placeholder="고정할 댓글 문구를 입력하세요..."></textarea>
-  <button onclick="doStep2()">① 일부공개 전환 + 댓글 등록</button>
+  <h2><span class="step-num">2</span> 전체 일부공개 전환 + 댓글 등록</h2>
+  <button onclick="runStep2All()">① 목록 전체 실행</button>
   <div id="step2Status" class="status" style="display:none"></div>
-  <div class="hint">이 버튼을 누르면: (1) 영상 상태를 '일부공개'로 바꾸고 → (2) 위에 입력한 댓글을 자동으로 답니다. 완료 후 아래 링크로 이동해서 <b>직접 댓글을 고정</b>해주세요.</div>
-  <div id="studioLink" style="margin-top:8px;display:none"></div>
+  <div class="hint">목록의 각 영상을 순서대로: (1) 일부공개로 전환 → (2) 댓글 등록. 완료된 영상은 표에서 "바로가기" 링크로 이동해 <b>직접 댓글을 고정</b>해주세요.</div>
 </div>
 
 <div class="card">
-  <h2><span class="step-num">3</span> 공개로 최종 전환</h2>
-  <p style="font-size:13px;color:#8a7f6f;margin:0 0 10px">댓글 고정까지 마치셨으면 눌러주세요. 영상이 즉시 공개됩니다.</p>
-  <button class="danger" onclick="doStep3()">② 지금 공개로 전환</button>
+  <h2><span class="step-num">3</span> 전체 공개로 최종 전환</h2>
+  <p style="font-size:13px;color:#8a7f6f;margin:0 0 10px">모든 영상의 댓글 고정을 마치셨으면 눌러주세요. 목록의 영상이 전부 즉시 공개됩니다.</p>
+  <button class="danger" onclick="runStep3All()">② 목록 전체 공개 전환</button>
   <div id="step3Status" class="status" style="display:none"></div>
 </div>
 
@@ -130,7 +149,7 @@
 const SCOPES = 'https://www.googleapis.com/auth/youtube.force-ssl';
 let tokenClient = null;
 let accessToken = null;
-let currentVideoId = null;
+let videos = []; // {id, rawInput, comment, title, status, rowIndex}
 
 function saveClientIdAndInit() {
   const id = document.getElementById('clientId').value.trim();
@@ -143,7 +162,6 @@ window.addEventListener('load', () => {
   const saved = localStorage.getItem('gg_client_id');
   if (saved) {
     document.getElementById('clientId').value = saved;
-    // GIS 스크립트 로드 대기 후 초기화
     const wait = setInterval(() => {
       if (window.google && google.accounts) {
         clearInterval(wait);
@@ -188,16 +206,12 @@ function showStatus(id, type, msg) {
 
 function extractVideoId(input) {
   input = input.trim();
-  // shorts URL
   let m = input.match(/shorts\/([a-zA-Z0-9_-]{11})/);
   if (m) return m[1];
-  // watch?v=
   m = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
   if (m) return m[1];
-  // youtu.be/
   m = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
   if (m) return m[1];
-  // 순수 ID로 보이는 경우
   if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
   return null;
 }
@@ -219,73 +233,151 @@ async function ytFetch(url, options = {}) {
   return data;
 }
 
-async function loadVideoInfo() {
-  const raw = document.getElementById('videoUrl').value;
-  const id = extractVideoId(raw);
-  if (!id) { alert('영상 링크 또는 ID를 정확히 입력해주세요.'); return; }
-  currentVideoId = id;
+function parseVideoListInput() {
+  const raw = document.getElementById('videoList').value;
+  const defaultComment = document.getElementById('defaultComment').value.trim();
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const parsed = [];
+  for (const line of lines) {
+    const parts = line.split('|');
+    const linkPart = parts[0].trim();
+    const commentPart = parts.length > 1 ? parts.slice(1).join('|').trim() : '';
+    const id = extractVideoId(linkPart);
+    if (!id) continue;
+    parsed.push({
+      id,
+      rawInput: linkPart,
+      comment: commentPart || defaultComment,
+      title: '',
+      currentStatus: '',
+      progress: 'wait',
+      errMsg: ''
+    });
+  }
+  return parsed;
+}
+
+async function loadVideoList() {
+  const parsed = parseVideoListInput();
+  if (!parsed.length) { alert('영상을 1개 이상 입력해주세요.'); return; }
+  showStatus('listStatus', 'info', '영상 정보 불러오는 중...');
   try {
-    const data = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=${id}`);
-    if (!data.items || !data.items.length) throw new Error('영상을 찾을 수 없습니다. 본인 채널 영상이 맞는지, 로그인 계정이 맞는지 확인해주세요.');
-    const v = data.items[0];
-    const box = document.getElementById('videoInfo');
-    box.style.display = 'block';
-    box.innerHTML = `
-      <div><b>제목:</b> ${v.snippet.title}</div>
-      <div><b>현재 공개 상태:</b> ${v.status.privacyStatus}</div>
-      <div><b>예약 공개 시각:</b> ${v.status.publishAt || '없음'}</div>
-    `;
+    // videos.list는 id를 콤마로 여러 개 한번에 조회 가능 (쿼터 절약)
+    const ids = parsed.map(v => v.id).join(',');
+    const data = await ytFetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,status&id=${ids}`);
+    const map = {};
+    (data.items || []).forEach(item => { map[item.id] = item; });
+    videos = parsed.map((v, i) => {
+      const item = map[v.id];
+      return {
+        ...v,
+        rowIndex: i,
+        title: item ? item.snippet.title : '⚠️ 찾을 수 없음',
+        currentStatus: item ? item.status.privacyStatus : '-'
+      };
+    });
+    renderTable();
+    showStatus('listStatus', 'ok', `✅ 총 ${videos.length}개 영상 불러옴.`);
   } catch (e) {
-    alert('오류: ' + e.message);
+    showStatus('listStatus', 'err', '❌ 오류: ' + e.message);
   }
 }
 
-async function doStep2() {
-  if (!currentVideoId) { alert('먼저 영상 정보를 확인해주세요.'); return; }
-  const comment = document.getElementById('commentText').value.trim();
-  if (!comment) { alert('댓글 문구를 입력해주세요.'); return; }
-  showStatus('step2Status', 'info', '진행 중...');
-  try {
-    // 1) 일부공개로 전환
-    await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
-      method: 'PUT',
-      body: JSON.stringify({ id: currentVideoId, status: { privacyStatus: 'unlisted' } })
-    });
-    // 2) 댓글 작성
-    const channelData = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true');
-    const myChannelId = channelData.items[0].id;
-    await ytFetch('https://www.googleapis.com/youtube/v3/commentThreads?part=snippet', {
-      method: 'POST',
-      body: JSON.stringify({
-        snippet: {
-          channelId: myChannelId,
-          videoId: currentVideoId,
-          topLevelComment: { snippet: { textOriginal: comment } }
-        }
-      })
-    });
-    showStatus('step2Status', 'ok', '✅ 일부공개 전환 + 댓글 작성 완료!\n이제 아래 링크로 가서 댓글을 직접 고정해주세요.');
-    const linkBox = document.getElementById('studioLink');
-    linkBox.style.display = 'block';
-    linkBox.innerHTML = `<a href="https://www.youtube.com/watch?v=${currentVideoId}" target="_blank">▶ 영상 보러가기 (댓글 고정하러 가기)</a>`;
-  } catch (e) {
-    showStatus('step2Status', 'err', '❌ 오류: ' + e.message);
-  }
+function renderTable() {
+  const tbody = document.getElementById('videoTbody');
+  document.getElementById('tableWrap').style.display = 'block';
+  tbody.innerHTML = videos.map((v, i) => `
+    <tr id="row-${i}">
+      <td>${i + 1}</td>
+      <td class="title">${v.title}</td>
+      <td>${v.currentStatus}</td>
+      <td class="comment">${v.comment ? v.comment.slice(0, 40) + (v.comment.length > 40 ? '…' : '') : '<span style="color:#c88">(댓글 없음)</span>'}</td>
+      <td><span class="badge wait" id="badge-${i}">대기</span></td>
+      <td><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">보기</a></td>
+    </tr>
+  `).join('');
 }
 
-async function doStep3() {
-  if (!currentVideoId) { alert('먼저 영상 정보를 확인해주세요.'); return; }
-  if (!confirm('영상을 지금 즉시 공개로 전환합니다. 댓글 고정을 마치셨나요?')) return;
-  showStatus('step3Status', 'info', '진행 중...');
-  try {
-    await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
-      method: 'PUT',
-      body: JSON.stringify({ id: currentVideoId, status: { privacyStatus: 'public' } })
-    });
-    showStatus('step3Status', 'ok', '✅ 공개 전환 완료! 영상이 지금 모두에게 공개됩니다.');
-  } catch (e) {
-    showStatus('step3Status', 'err', '❌ 오류: ' + e.message);
+function setBadge(i, type, text) {
+  const el = document.getElementById('badge-' + i);
+  if (!el) return;
+  el.className = 'badge ' + type;
+  el.textContent = text;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runStep2All() {
+  if (!videos.length) { alert('먼저 영상 목록을 불러와주세요.'); return; }
+  showStatus('step2Status', 'info', '진행 중... (0/' + videos.length + ')');
+  let ok = 0, fail = 0;
+  const channelData = await ytFetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true').catch(e => null);
+  if (!channelData) {
+    showStatus('step2Status', 'err', '❌ 채널 정보를 가져오지 못했습니다. 로그인 계정을 확인해주세요.');
+    return;
   }
+  const myChannelId = channelData.items[0].id;
+
+  for (let i = 0; i < videos.length; i++) {
+    const v = videos[i];
+    setBadge(i, 'doing', '진행중');
+    try {
+      if (!v.comment) throw new Error('댓글 문구가 비어있음');
+      // 1) 일부공개로 전환
+      await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
+        method: 'PUT',
+        body: JSON.stringify({ id: v.id, status: { privacyStatus: 'unlisted' } })
+      });
+      // 2) 댓글 작성
+      await ytFetch('https://www.googleapis.com/youtube/v3/commentThreads?part=snippet', {
+        method: 'POST',
+        body: JSON.stringify({
+          snippet: {
+            channelId: myChannelId,
+            videoId: v.id,
+            topLevelComment: { snippet: { textOriginal: v.comment } }
+          }
+        })
+      });
+      setBadge(i, 'done', '완료 (고정 필요)');
+      ok++;
+    } catch (e) {
+      setBadge(i, 'fail', '실패');
+      v.errMsg = e.message;
+      fail++;
+    }
+    showStatus('step2Status', 'info', `진행 중... (${i + 1}/${videos.length}) 성공 ${ok} · 실패 ${fail}`);
+    await sleep(400); // API 과부하 방지용 짧은 텀
+  }
+  const failList = videos.filter(v => v.errMsg).map((v, idx) => `- ${v.title || v.id}: ${v.errMsg}`).join('\n');
+  showStatus('step2Status', failList ? 'err' : 'ok',
+    `완료. 성공 ${ok} · 실패 ${fail}\n${failList ? '실패 목록:\n' + failList : '이제 표의 "보기" 링크로 이동해 각 영상 댓글을 직접 고정해주세요.'}`);
+}
+
+async function runStep3All() {
+  if (!videos.length) { alert('먼저 영상 목록을 불러와주세요.'); return; }
+  if (!confirm(`목록의 영상 ${videos.length}개를 지금 즉시 전부 공개로 전환합니다. 댓글 고정을 모두 마치셨나요?`)) return;
+  showStatus('step3Status', 'info', '진행 중... (0/' + videos.length + ')');
+  let ok = 0, fail = 0;
+  for (let i = 0; i < videos.length; i++) {
+    const v = videos[i];
+    setBadge(i, 'doing', '전환중');
+    try {
+      await ytFetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
+        method: 'PUT',
+        body: JSON.stringify({ id: v.id, status: { privacyStatus: 'public' } })
+      });
+      setBadge(i, 'done', '공개완료');
+      ok++;
+    } catch (e) {
+      setBadge(i, 'fail', '실패');
+      v.errMsg = e.message;
+      fail++;
+    }
+    showStatus('step3Status', 'info', `진행 중... (${i + 1}/${videos.length}) 성공 ${ok} · 실패 ${fail}`);
+    await sleep(400);
+  }
+  showStatus('step3Status', fail ? 'err' : 'ok', `완료. 성공 ${ok} · 실패 ${fail}`);
 }
 </script>
 </body>
