@@ -70,9 +70,6 @@ button{cursor:pointer}
 .tile .lb{display:block;font-size:12px;color:var(--muted);letter-spacing:.02em}
 .tile b{display:block;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:min(16px,4vw);letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.in b{color:var(--in)} .tile.out b{color:var(--out)}
-.tile.wide{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;padding:9px 12px}
-.tile.wide .lb{display:inline;margin-right:8px}
-.tile.wide b{display:inline;margin:0;font-size:15px;overflow:visible}
 .tile.net{background:var(--in-bg);border-color:transparent}
 .tile.net.neg{background:var(--out-bg)}
 .tile.net.neg b{color:var(--out)}
@@ -101,6 +98,10 @@ button{cursor:pointer}
 .meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted)}
 .tag{background:var(--surface2);border-radius:6px;padding:0 7px}
 .memo{overflow-wrap:anywhere}
+.tag.wait{background:var(--warn-bg);color:var(--warn);font-weight:600}
+.chips button[aria-pressed="true"]{background:var(--in);color:var(--on-in);border-color:transparent;font-weight:600}
+.flab{font-size:13px;color:var(--muted);font-weight:500;display:block;margin-bottom:5px}
+.jobsum{margin:0;font-size:14px;color:var(--in);font-weight:600;min-height:1.4em}
 
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:28px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
 .empty h2{margin:0;font-size:17px}
@@ -191,13 +192,19 @@ tr.badrow td{background:var(--out-bg)}
     <label><span id="lName">업체</span><input id="fName" list="dlName" required></label>
     <datalist id="dlName"></datalist>
     <div class="chips" id="quick"></div>
-    <label>금액 (원)<input id="fAmt" inputmode="numeric" required placeholder="0"></label>
+    <label><span id="lAmt">짐량 금액 (원)</span><input id="fAmt" inputmode="numeric" required placeholder="0"></label>
     <div id="inOnly" class="stack">
-      <div class="two">
-        <label>추가<input id="fExtra" inputmode="numeric" placeholder="없으면 비움"></label>
-        <label>결재<input id="fPay" placeholder="예: 이"></label>
+      <label>추가금 (만원 단위)<input id="fExtra" inputmode="numeric" placeholder="없으면 비움. 예: 3 = 3만원"></label>
+      <p class="jobsum" id="jobSum" aria-live="polite"></p>
+      <div>
+        <span class="flab">결재</span>
+        <div class="chips" id="payChips">
+          <button type="button" data-pay="이" aria-pressed="false">이체</button>
+          <button type="button" data-pay="현" aria-pressed="false">현금결제</button>
+          <button type="button" data-pay="x" aria-pressed="false">입금전</button>
+        </div>
+        <input type="hidden" id="fPay">
       </div>
-      <div class="chips" id="payChips"></div>
     </div>
     <label>메모<input id="fMemo"></label>
     <div class="btns">
@@ -321,7 +328,7 @@ tr.badrow td{background:var(--out-bg)}
         if (inAmt != null && inAmt !== 0) {
           last = { d: date, t: 'in', n: inName || '(업체 없음)', a: inAmt,
             x: iExtra >= 0 && row[iExtra] !== '' ? (num(row[iExtra]) != null ? num(row[iExtra]) : txt(row[iExtra])) : '',
-            p: iPay >= 0 ? txt(row[iPay]) : '', m: '' };
+            p: iPay >= 0 ? normPay(row[iPay]) : '', m: '' };
           found.push(last); nIn++; sumIn += inAmt;
           if (typeof last.x === 'number') sumExtra += last.x;
         } else if (inName !== '') { ignored++; }
@@ -340,7 +347,21 @@ tr.badrow td{background:var(--out-bg)}
     return { entries: entries, report: report, skipped: skipped };
   }
 
-  var api = { parseWorkbook: parseWorkbook };
+  /* 결재 표시는 이(이체), 현(현금결제), x(입금전) 세 가지만 사용. 그 밖의 값(포결 등)은 비움 */
+  var EXTRA_UNIT = 10000; /* 추가 칸의 숫자 1 = 1만원 (엑셀 메모의 '추가 3만' 기준) */
+  function normPay(p) { p = txt(p); if (p === 'X') p = 'x'; return (p === '이' || p === '현' || p === 'x') ? p : ''; }
+  function extraWon(e) { if (e.x === '' || e.x == null) return 0; var n = Number(e.x); return isFinite(n) ? n * EXTRA_UNIT : 0; }
+  function jobTotal(e) { return e.t === 'in' ? e.a + extraWon(e) : e.a; }
+  function totals(list) {
+    var t = { base: 0, extraU: 0, extraAmt: 0, inc: 0, out: 0, ni: 0, no: 0 };
+    list.forEach(function (e) {
+      if (e.t === 'in') { t.base += e.a; t.ni++; var w = extraWon(e); t.extraAmt += w; t.extraU += w / EXTRA_UNIT; }
+      else { t.out += e.a; t.no++; }
+    });
+    t.inc = t.base + t.extraAmt; t.net = t.inc - t.out; return t;
+  }
+
+  var api = { parseWorkbook: parseWorkbook, normPay: normPay, extraWon: extraWon, jobTotal: jobTotal, totals: totals, EXTRA_UNIT: EXTRA_UNIT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LedgerCore = api;
 })(typeof window !== 'undefined' ? window : this);
@@ -379,14 +400,8 @@ tr.badrow td{background:var(--out-bg)}
   var showOut = false;
   try { showOut = localStorage.getItem('ledger.showOut') === '1'; } catch (e) { }
 
-  function totals(list) {
-    var t = { inc: 0, out: 0, extra: 0, ni: 0, no: 0 };
-    list.forEach(function (e) {
-      if (e.t === 'in') { t.inc += e.a; t.ni++; if (e.x !== '' && e.x != null && isFinite(Number(e.x))) t.extra += Number(e.x); }
-      else { t.out += e.a; t.no++; }
-    });
-    t.net = t.inc - t.out; return t;
-  }
+  var totals = LedgerCore.totals, jobTotal = LedgerCore.jobTotal, extraWon = LedgerCore.extraWon;
+  var PAYL = { '이': '이체', '현': '현금결제', 'x': '입금전' };
   function cmp(a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : (a.t === b.t ? a.id - b.id : (a.t === 'in' ? -1 : 1)); }
   function minYm() { var m = null; S.entries.forEach(function (e) { var k = e.d.slice(0, 7); if (m === null || k < m) m = k; }); return m; }
 
@@ -427,12 +442,16 @@ tr.badrow td{background:var(--out-bg)}
   }
   function rowHTML(e) {
     var tags = [];
+    var shownAmt = e.a;
     if (e.t === 'in') {
-      if (e.p) tags.push('<span class="tag">' + esc(e.p) + '</span>');
-      if (e.x !== '' && e.x != null) tags.push('<span class="tag">추가 ' + esc(e.x) + '</span>');
+      shownAmt = jobTotal(e);
+      if (e.p && PAYL[e.p]) tags.push('<span class="tag' + (e.p === 'x' ? ' wait' : '') + '">' + PAYL[e.p] + '</span>');
+      var xw = extraWon(e);
+      if (xw > 0) tags.push('<span class="tag">짐량 ' + fmt(e.a) + ' + 추가 ' + fmt(xw) + '</span>');
+      else if (e.x !== '' && e.x != null && !(Number(e.x) === 0)) tags.push('<span class="tag">추가 ' + esc(e.x) + '</span>');
     }
     if (e.m) tags.push('<span class="memo">' + esc(e.m) + '</span>');
-    return '<button type="button" class="row ' + e.t + '" data-id="' + e.id + '"><span class="nm">' + esc(e.n) + '</span><span class="amt num">' + (e.t === 'out' ? '−' : '') + fmt(e.a) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>';
+    return '<button type="button" class="row ' + e.t + '" data-id="' + e.id + '"><span class="nm">' + esc(e.n) + '</span><span class="amt num">' + (e.t === 'out' ? '−' : '') + fmt(shownAmt) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>';
   }
 
   function render() {
@@ -453,10 +472,12 @@ tr.badrow td{background:var(--out-bg)}
       '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
       '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
       '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
-      '<div class="tile wide"><span><span class="lb">작업 건수</span><b>' + t.ni + '건</b></span><span><span class="lb">추가 합계</span><b>' + fmt(t.extra) + '</b></span></div>';
+      '<div class="tile"><span class="lb">작업 건수</span><b>' + t.ni + '건</b></div>' +
+      '<div class="tile"><span class="lb">짐량 금액</span><b>' + fmt(t.base) + '</b></div>' +
+      '<div class="tile"><span class="lb">추가 금액</span><b>' + fmt(t.extraAmt) + '</b></div>';
     $('sub').textContent = searching
       ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : '지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값';
+      : '수입 = 짐량 + 추가 · 총누계 = 수입 − 지출 · 지출 ' + t.no + '건';
 
     // 고정지출 안내
     var bn = '';
@@ -484,7 +505,7 @@ tr.badrow td{background:var(--out-bg)}
     while (i < shown.length) {
       var d = shown[i].d, group = [];
       while (i < shown.length && shown[i].d === d) group.push(shown[i++]);
-      var dayInc = group.reduce(function (s, e) { return s + (e.t === 'in' ? e.a : 0); }, 0);
+      var dayInc = group.reduce(function (s, e) { return s + (e.t === 'in' ? jobTotal(e) : 0); }, 0);
       html += '<div class="day">' + dayHead(d, searching, dayInc) + group.map(rowHTML).join('') + '</div>';
     }
     $('list').innerHTML = html;
@@ -518,11 +539,10 @@ tr.badrow td{background:var(--out-bg)}
     kind = k;
     $('tIn').classList.toggle('on', k === 'in'); $('tOut').classList.toggle('on', k === 'out');
     $('lName').textContent = k === 'in' ? '업체' : '항목';
+    $('lAmt').textContent = k === 'in' ? '짐량 금액 (원)' : '금액 (원)';
     $('inOnly').hidden = k !== 'in';
     $('dlName').innerHTML = freq(k, 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
     $('quick').innerHTML = k === 'out' ? S.fixed.filter(function (f) { return f.n; }).map(function (f, i) { return '<button type="button" data-fx="' + i + '">' + esc(f.n) + '</button>'; }).join('') : '';
-    var pays = freq('in', 'p').slice(0, 4); if (!pays.length) pays = ['이', '현'];
-    $('payChips').innerHTML = pays.map(function (p) { return '<button type="button" data-pay="' + esc(p) + '">' + esc(p) + '</button>'; }).join('');
   }
   $('tIn').addEventListener('click', function () { setKind('in'); });
   $('tOut').addEventListener('click', function () { setKind('out'); });
@@ -530,8 +550,18 @@ tr.badrow td{background:var(--out-bg)}
     var b = ev.target.closest('[data-fx]'); if (!b) return;
     var f = S.fixed[+b.dataset.fx]; $('fName').value = f.n; $('fAmt').value = fmt(f.a); $('fMemo').value = f.m || '';
   });
-  $('payChips').addEventListener('click', function (ev) { var b = ev.target.closest('[data-pay]'); if (b) $('fPay').value = b.dataset.pay; });
-  $('fAmt').addEventListener('input', function () { var d = this.value.replace(/\D/g, ''); this.value = d ? fmt(parseInt(d, 10)) : ''; });
+  function setPay(v) {
+    $('fPay').value = v;
+    Array.prototype.forEach.call($('payChips').children, function (b) { b.setAttribute('aria-pressed', b.dataset.pay === v ? 'true' : 'false'); });
+  }
+  function updJob() {
+    var a = parseInt($('fAmt').value.replace(/\D/g, ''), 10) || 0, xs = $('fExtra').value.trim();
+    var ex = xs !== '' && isFinite(Number(xs)) ? Number(xs) * LedgerCore.EXTRA_UNIT : 0;
+    $('jobSum').textContent = (a || ex) ? '이 작업 합계 ' + fmt(a + ex) + '원 (짐량 ' + fmt(a) + ' + 추가 ' + fmt(ex) + ')' : '';
+  }
+  $('payChips').addEventListener('click', function (ev) { var b = ev.target.closest('[data-pay]'); if (b) setPay($('fPay').value === b.dataset.pay ? '' : b.dataset.pay); });
+  $('fAmt').addEventListener('input', function () { var d = this.value.replace(/\D/g, ''); this.value = d ? fmt(parseInt(d, 10)) : ''; updJob(); });
+  $('fExtra').addEventListener('input', updJob);
   $('fab').addEventListener('click', function () { openEntry(); });
 
   function openEntry(id) {
@@ -543,8 +573,9 @@ tr.badrow td{background:var(--out-bg)}
     $('fName').value = e ? e.n : '';
     $('fAmt').value = e ? fmt(e.a) : '';
     $('fExtra').value = e && e.x !== '' && e.x != null ? e.x : '';
-    $('fPay').value = e ? (e.p || '') : '';
+    setPay(e ? (e.p || '') : '이');
     $('fMemo').value = e ? (e.m || '') : '';
+    updJob();
     $('bDel').hidden = !e; $('bNext').hidden = !!e;
     $('tIn').disabled = $('tOut').disabled = false;
     openSheet('shEntry');
@@ -559,7 +590,7 @@ tr.badrow td{background:var(--out-bg)}
     if (editing) Object.assign(editing, rec); else { rec.id = S.seq++; S.entries.push(rec); }
     save(); ym = d.slice(0, 7); q = ''; $('q').value = '';
     if (more) {
-      $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; $('fPay').value = ''; $('fMemo').value = '';
+      $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; setPay('이'); $('fMemo').value = ''; updJob();
       setKind(kind); $('fName').focus(); toast('저장했습니다. 이어서 입력하세요.');
     } else { closeSheet(); toast(kind === 'out' && !showOut ? '저장했습니다 (지출은 위 합계에만 반영됩니다)' : '저장했습니다'); }
     render();
@@ -637,8 +668,7 @@ tr.badrow td{background:var(--out-bg)}
       }
     });
     var t = totals(list);
-    rows.push(['', '', '합계', t.inc, t.extra, '', '합계', t.out, '']);
-    rows.push(['', '', '', '', '', '', '', '총누계', t.net]);
+    rows.push(['', '', '합계', t.base, t.extraU, '', '합계', t.out, '']);
     return rows.map(function (r) { return r.map(cl).join('\t'); }).join('\n');
   }
 
@@ -659,7 +689,7 @@ tr.badrow td{background:var(--out-bg)}
     if (!o || !Array.isArray(o.entries)) { toast('백업 형식이 아닙니다.'); return; }
     var ents = [], seq = 1;
     o.entries.forEach(function (e) {
-      if (e && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && (e.t === 'in' || e.t === 'out') && isFinite(Number(e.a))) ents.push({ id: seq++, d: e.d, t: e.t, n: String(e.n || ''), a: Number(e.a), x: e.x == null ? '' : e.x, p: String(e.p || ''), m: String(e.m || '') });
+      if (e && /^\d{4}-\d{2}-\d{2}$/.test(e.d) && (e.t === 'in' || e.t === 'out') && isFinite(Number(e.a))) ents.push({ id: seq++, d: e.d, t: e.t, n: String(e.n || ''), a: Number(e.a), x: e.x == null ? '' : e.x, p: LedgerCore.normPay(e.p), m: String(e.m || '') });
     });
     ask('백업으로 복원할까요?', '지금 내역 ' + S.entries.length + '건이 백업의 ' + ents.length + '건으로 바뀝니다.', '복원', false).then(function (ok) {
       if (!ok) return;
@@ -689,8 +719,8 @@ tr.badrow td{background:var(--out-bg)}
     var rep = pending.report, ni = 0, no = 0, ok = 0, bad = 0, ign = 0;
     rep.forEach(function (r) { ni += r.nIn; no += r.nOut; ign += r.ignored; if (r.ok === true) ok++; else if (r.ok === false) bad++; });
     if (!pending.entries.length) { toast('가져올 내역을 찾지 못했습니다. 시트 이름이 \'26년10월\' 형식인지 확인해 주세요.'); return; }
-    $('impSum').textContent = rep.length + '개월 시트 · 수입 ' + fmt(ni) + '건 · 지출 ' + fmt(no) + '건. 시트 아래쪽 합계와 대조: ' + ok + '개월 일치' + (bad ? ', ' + bad + '개월 불일치' : '') + '.';
-    $('impTbl').innerHTML = '<tr><th>월</th><th>수입 건</th><th>수입 합계</th><th>지출 합계</th><th>대조</th></tr>' +
+    $('impSum').textContent = rep.length + '개월 시트 · 작업 ' + fmt(ni) + '건 · 지출 ' + fmt(no) + '건. 시트 아래쪽 합계와 대조: ' + ok + '개월 일치' + (bad ? ', ' + bad + '개월 불일치' : '') + '.';
+    $('impTbl').innerHTML = '<tr><th>월</th><th>작업 건</th><th>짐량 합계</th><th>지출 합계</th><th>대조</th></tr>' +
       rep.map(function (r) {
         var st = r.ok === true ? '<td class="ok">일치</td>' : r.ok === false ? '<td class="bad">불일치</td>' : '<td>합계 없음</td>';
         return '<tr' + (r.ok === false ? ' class="badrow"' : '') + '><td>' + esc(ymLabel(r.ym)) + '</td><td class="num">' + r.nIn + '</td><td class="num">' + fmt(r.inc) + '</td><td class="num">' + fmt(r.out) + '</td>' + st + '</tr>';
@@ -714,6 +744,7 @@ tr.badrow td{background:var(--out-bg)}
 
   load();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
+  S.entries.forEach(function (e) { e.p = LedgerCore.normPay(e.p); });
   render();
 })();
 </script>
