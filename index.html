@@ -446,16 +446,13 @@ tr.badrow td{background:var(--out-bg)}
     $('outTg').setAttribute('aria-pressed', showOut ? 'true' : 'false');
     $('outTg').textContent = showOut ? '지출 내역 숨기기' : '지출 내역 보기';
 
-    $('tiles').innerHTML = showOut
-      ? '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
-        '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
-        '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>'
-      : '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
-        '<div class="tile"><span class="lb">수입 건수</span><b>' + t.ni + '건</b></div>' +
-        '<div class="tile"><span class="lb">추가 합계</span><b>' + fmt(t.extra) + '</b></div>';
+    $('tiles').innerHTML =
+      '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
+      '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
+      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>';
     $('sub').textContent = searching
       ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : (showOut ? '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + ' · 지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값' : '지출은 숨김 상태입니다. 위 버튼을 누르면 볼 수 있습니다.');
+      : '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + ' · 지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값';
 
     // 고정지출 안내
     var bn = '';
@@ -560,7 +557,7 @@ tr.badrow td{background:var(--out-bg)}
     if (more) {
       $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; $('fPay').value = ''; $('fMemo').value = '';
       setKind(kind); $('fName').focus(); toast('저장했습니다. 이어서 입력하세요.');
-    } else { closeSheet(); toast(kind === 'out' && !showOut ? '저장했습니다 (지출은 홈에 표시되지 않습니다)' : '저장했습니다'); }
+    } else { closeSheet(); toast(kind === 'out' && !showOut ? '저장했습니다 (지출은 위 합계에만 반영됩니다)' : '저장했습니다'); }
     render();
   });
   $('bDel').addEventListener('click', function () {
