@@ -70,6 +70,9 @@ button{cursor:pointer}
 .tile .lb{display:block;font-size:12px;color:var(--muted);letter-spacing:.02em}
 .tile b{display:block;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:min(16px,4vw);letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.in b{color:var(--in)} .tile.out b{color:var(--out)}
+.tile.wide{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;padding:9px 12px}
+.tile.wide .lb{display:inline;margin-right:8px}
+.tile.wide b{display:inline;margin:0;font-size:15px;overflow:visible}
 .tile.net{background:var(--in-bg);border-color:transparent}
 .tile.net.neg{background:var(--out-bg)}
 .tile.net.neg b{color:var(--out)}
@@ -449,10 +452,11 @@ tr.badrow td{background:var(--out-bg)}
     $('tiles').innerHTML =
       '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
       '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
-      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>';
+      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
+      '<div class="tile wide"><span><span class="lb">작업 건수</span><b>' + t.ni + '건</b></span><span><span class="lb">추가 합계</span><b>' + fmt(t.extra) + '</b></span></div>';
     $('sub').textContent = searching
       ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + ' · 지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값';
+      : '지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값';
 
     // 고정지출 안내
     var bn = '';
