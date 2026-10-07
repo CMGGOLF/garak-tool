@@ -66,7 +66,7 @@ button{cursor:pointer}
 
 /* 합계 */
 .tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
-.tiles .tile{grid-column:span 3}.tiles .tile.big{grid-column:span 2}
+.tiles .tile{grid-column:span 2}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
 .tile .lb{display:block;font-size:12px;color:var(--muted);letter-spacing:.02em}
 .tile b{display:block;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:min(16px,4vw);letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -479,16 +479,15 @@ tr.badrow td{background:var(--out-bg)}
     $('outTg').textContent = showOut ? '수입 내역 보기' : '지출 내역 보기';
 
     $('tiles').innerHTML =
-      '<div class="tile big in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
-      '<div class="tile big out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
-      '<div class="tile big net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
-      '<div class="tile"><span class="lb">작업 건수</span><b>' + t.ni + '건</b></div>' +
-      '<div class="tile"><span class="lb">기본 금액</span><b>' + fmt(t.base) + '</b></div>' +
-      '<div class="tile"><span class="lb">짐량 금액</span><b>' + fmt(t.loadAmt) + '</b></div>' +
-      '<div class="tile"><span class="lb">추가금</span><b>' + fmt(t.busyAmt) + '</b></div>';
+      '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.base) + '</b></div>' +
+      '<div class="tile in"><span class="lb">짐량</span><b>' + fmt(t.loadAmt) + '</b></div>' +
+      '<div class="tile in"><span class="lb">추가금</span><b>' + fmt(t.busyAmt) + '</b></div>' +
+      '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
+      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
+      '<div class="tile"><span class="lb">작업 건수</span><b>' + t.ni + '건</b></div>';
     $('sub').textContent = searching
       ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : '수입 = 기본 + 짐량 + 추가금 · 총누계 = 수입 − 지출 · 지출 ' + t.no + '건';
+      : '총누계 = 수입 + 짐량 + 추가금 − 지출 · 지출 ' + t.no + '건';
 
     // 고정지출 안내
     var bn = '';
