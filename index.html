@@ -1,16 +1,4 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1614">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="입출금 장부">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
-<style>[hidden]{display:none!important}html,body{margin:0}img{max-width:100%}</style>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>입출금 장부</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -77,6 +65,9 @@ button{cursor:pointer}
 
 .search input{width:100%;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 14px;font-size:16px}
 .search input::placeholder{color:var(--muted)}
+.filters{display:flex;gap:8px}
+.chipbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:0 14px;min-height:38px;font-size:14px;font-weight:500;color:var(--muted)}
+.chipbtn[aria-pressed="true"]{background:var(--in-bg);border-color:transparent;color:var(--in)}
 
 .banner{display:flex;align-items:center;gap:12px;background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:14px}
 .banner span{flex:1;min-width:0}
@@ -154,9 +145,6 @@ tr.badrow td{background:var(--out-bg)}
 .toast.show{opacity:1}
 </style>
 
-
-</head>
-<body>
 <header class="bar"><div class="bar-in">
   <button class="ic" id="prev" type="button" aria-label="이전 달">‹</button>
   <label class="mon"><select id="monthSel" aria-label="월 선택"></select></label>
@@ -168,6 +156,7 @@ tr.badrow td{background:var(--out-bg)}
   <section class="tiles" id="tiles" aria-label="월 합계"></section>
   <p class="sub" id="sub"></p>
   <div class="search"><input id="q" type="search" enterkeyhint="search" placeholder="업체·동네·메모 검색 (전체 기간)" aria-label="검색"></div>
+  <div class="filters"><button type="button" class="chipbtn" id="outTg" aria-pressed="false">지출 내역 보기</button></div>
   <div id="banner"></div>
   <div id="list" style="display:flex;flex-direction:column;gap:12px"></div>
 </main>
@@ -369,6 +358,8 @@ tr.badrow td{background:var(--out-bg)}
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var CUR = today().slice(0, 7);
   var ym = CUR, q = '';
+  var showOut = false;
+  try { showOut = localStorage.getItem('ledger.showOut') === '1'; } catch (e) { }
 
   function totals(list) {
     var t = { inc: 0, out: 0, extra: 0, ni: 0, no: 0 };
@@ -436,18 +427,21 @@ tr.badrow td{background:var(--out-bg)}
     } else list = S.entries.filter(function (e) { return e.d.slice(0, 7) === ym; });
     t = totals(list);
     list.sort(cmp);
+    var shown = showOut ? list : list.filter(function (e) { return e.t === 'in'; });
+    $('outTg').setAttribute('aria-pressed', showOut ? 'true' : 'false');
+    $('outTg').textContent = showOut ? '지출 내역 숨기기' : '지출 내역 보기';
 
     $('tiles').innerHTML =
       '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
       '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
       '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>';
     $('sub').textContent = searching
-      ? '“' + q.trim() + '” 검색 결과 ' + list.length + '건 · 전체 기간'
-      : '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + ' · 지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값';
+      ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
+      : '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + (showOut ? ' · 지출 ' + t.no + '건' : '') + ' · 총누계는 수입에서 지출을 뺀 값';
 
     // 고정지출 안내
     var bn = '';
-    if (!searching && S.entries.length && S.fixed.length) {
+    if (showOut && !searching && S.entries.length && S.fixed.length) {
       var mn = minYm();
       if (mn && ym >= mn && ym <= addM(CUR, 1)) {
         var names = {}; list.forEach(function (e) { if (e.t === 'out') names[e.n] = 1; });
@@ -459,18 +453,18 @@ tr.badrow td{background:var(--out-bg)}
     }
     $('banner').innerHTML = bn;
 
-    if (!list.length) {
+    if (!shown.length) {
       if (!S.entries.length) {
         $('list').innerHTML = '<div class="empty"><h2>아직 내역이 없습니다</h2><p>쓰던 엑셀 파일을 가져오거나 첫 내역을 직접 입력하세요.</p><div class="btns"><button type="button" class="btn" id="emImp">엑셀 가져오기</button><button type="button" class="btn primary" id="emAdd">내역 추가</button></div></div>';
       } else {
-        $('list').innerHTML = '<div class="empty"><h2>' + (searching ? '검색 결과가 없습니다' : ymLabel(ym) + ' 내역이 없습니다') + '</h2><p>' + (searching ? '다른 글자로 찾아보세요.' : '오른쪽 아래 + 버튼으로 추가합니다.') + '</p></div>';
+        $('list').innerHTML = '<div class="empty"><h2>' + (searching ? '검색 결과가 없습니다' : ymLabel(ym) + (showOut ? ' 내역이 없습니다' : ' 수입 내역이 없습니다')) + '</h2><p>' + (searching ? '다른 글자로 찾아보세요.' : '오른쪽 아래 + 버튼으로 추가합니다.') + '</p></div>';
       }
       return;
     }
     var html = '', i = 0;
-    while (i < list.length) {
-      var d = list[i].d, group = [];
-      while (i < list.length && list[i].d === d) group.push(list[i++]);
+    while (i < shown.length) {
+      var d = shown[i].d, group = [];
+      while (i < shown.length && shown[i].d === d) group.push(shown[i++]);
       var dayInc = group.reduce(function (s, e) { return s + (e.t === 'in' ? e.a : 0); }, 0);
       html += '<div class="day">' + dayHead(d, searching, dayInc) + group.map(rowHTML).join('') + '</div>';
     }
@@ -489,6 +483,11 @@ tr.badrow td{background:var(--out-bg)}
   $('prev').addEventListener('click', function () { ym = addM(ym, -1); q = ''; $('q').value = ''; render(); });
   $('next').addEventListener('click', function () { ym = addM(ym, 1); q = ''; $('q').value = ''; render(); });
   $('q').addEventListener('input', function () { q = this.value; render(); });
+  $('outTg').addEventListener('click', function () {
+    showOut = !showOut;
+    try { localStorage.setItem('ledger.showOut', showOut ? '1' : '0'); } catch (e) { }
+    render();
+  });
 
   /* ---------- 입력/수정 ---------- */
   var editing = null, kind = 'in';
@@ -700,5 +699,4 @@ tr.badrow td{background:var(--out-bg)}
 })();
 </script>
 
-</body>
-</html>
+</body></html>
