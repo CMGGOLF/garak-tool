@@ -1,4 +1,16 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1614">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="입출금 장부">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>[hidden]{display:none!important}html,body{margin:0}img{max-width:100%}</style>
 <title>입출금 장부</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -145,6 +157,9 @@ tr.badrow td{background:var(--out-bg)}
 .toast.show{opacity:1}
 </style>
 
+
+</head>
+<body>
 <header class="bar"><div class="bar-in">
   <button class="ic" id="prev" type="button" aria-label="이전 달">‹</button>
   <label class="mon"><select id="monthSel" aria-label="월 선택"></select></label>
@@ -431,13 +446,16 @@ tr.badrow td{background:var(--out-bg)}
     $('outTg').setAttribute('aria-pressed', showOut ? 'true' : 'false');
     $('outTg').textContent = showOut ? '지출 내역 숨기기' : '지출 내역 보기';
 
-    $('tiles').innerHTML =
-      '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
-      '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
-      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>';
+    $('tiles').innerHTML = showOut
+      ? '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
+        '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
+        '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>'
+      : '<div class="tile in"><span class="lb">수입</span><b>' + fmt(t.inc) + '</b></div>' +
+        '<div class="tile"><span class="lb">수입 건수</span><b>' + t.ni + '건</b></div>' +
+        '<div class="tile"><span class="lb">추가 합계</span><b>' + fmt(t.extra) + '</b></div>';
     $('sub').textContent = searching
       ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + (showOut ? ' · 지출 ' + t.no + '건' : '') + ' · 총누계는 수입에서 지출을 뺀 값';
+      : (showOut ? '수입 ' + t.ni + '건 · 추가 합계 ' + fmt(t.extra) + ' · 지출 ' + t.no + '건 · 총누계는 수입에서 지출을 뺀 값' : '지출은 숨김 상태입니다. 위 버튼을 누르면 볼 수 있습니다.');
 
     // 고정지출 안내
     var bn = '';
@@ -542,7 +560,7 @@ tr.badrow td{background:var(--out-bg)}
     if (more) {
       $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; $('fPay').value = ''; $('fMemo').value = '';
       setKind(kind); $('fName').focus(); toast('저장했습니다. 이어서 입력하세요.');
-    } else { closeSheet(); toast('저장했습니다'); }
+    } else { closeSheet(); toast(kind === 'out' && !showOut ? '저장했습니다 (지출은 홈에 표시되지 않습니다)' : '저장했습니다'); }
     render();
   });
   $('bDel').addEventListener('click', function () {
@@ -699,4 +717,5 @@ tr.badrow td{background:var(--out-bg)}
 })();
 </script>
 
-</body></html>
+</body>
+</html>
