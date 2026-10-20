@@ -842,7 +842,7 @@ tr.badrow td{background:var(--out-bg)}
   var showSon = true;
   try { showSon = localStorage.getItem('ledger.son') !== '0'; } catch (e) { }
   var lunFmt = null, lunCache = {};
-  try { lunFmt = new Intl.DateTimeFormat('en-u-ca-chinese', { day: 'numeric' }); } catch (e) { }
+  try { lunFmt = new Intl.DateTimeFormat('en-u-ca-dangi', { day: 'numeric' }); } catch (e) { }
   function lunarDay(ds) {
     if (!lunFmt) return 0;
     if (lunCache[ds] != null) return lunCache[ds];
@@ -850,6 +850,7 @@ tr.badrow td{background:var(--out-bg)}
     try { var ps = lunFmt.formatToParts(new Date(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10), 12)); for (var i = 0; i < ps.length; i++) if (ps[i].type === 'day') v = parseInt(ps[i].value, 10) || 0; } catch (e) { }
     return (lunCache[ds] = v);
   }
+  /* 손 없는 날: 음력(한국 시각 기준) 9, 10, 19, 20, 29, 30일 */
   function isSon(ds) { var l = lunarDay(ds); return l === 9 || l === 10 || l === 19 || l === 20 || l === 29 || l === 30; }
   $('sonTg').addEventListener('click', function () { showSon = !showSon; try { localStorage.setItem('ledger.son', showSon ? '1' : '0'); } catch (e) { } renderSched(); });
 
