@@ -843,8 +843,8 @@ tr.badrow td{background:var(--out-bg)}
     var map = {}, np = 0, td = today(), icm = {};
     S.sched.forEach(function (z) {
       if (z.d.slice(0, 7) !== ym) return;
+      if (z.ic) { (icm[z.d] = icm[z.d] || []).push(z.ic); return; }
       var m = map[z.d] || (map[z.d] = { p: 0, f: 0 });
-      if (z.ic && !z.done) (icm[z.d] = icm[z.d] || []).push(z.ic);
       if (z.done) m.f++; else { m.p++; np++; }
     });
     var h = '';
@@ -858,18 +858,18 @@ tr.badrow td{background:var(--out-bg)}
     $('scCal').innerHTML = h;
     $('scSum').textContent = np ? ymLabel(ym) + ' 예정 ' + np + '건' : ymLabel(ym) + ' 예정된 일정이 없습니다';
 
-    var over = S.sched.filter(function (z) { return !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
+    var over = S.sched.filter(function (z) { return !z.ic && !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
     $('scBanner').innerHTML = over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '';
 
     var items = S.sched.filter(function (z) { return z.d === selDay; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : scKey(a) > scKey(b) ? 1 : a.id - b.id; });
     if (!items.length) { $('scList').innerHTML = '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
     $('scList').innerHTML = '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
       var tags = [];
-      if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
+      if (z.ic) { } else if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
       else if (z.d < td) tags.push('<span class="tag wait">입금 처리 전</span>');
       if (z.m) tags.push('<span class="memo">' + esc(z.m) + '</span>');
       return '<button type="button" class="row in" data-sid="' + z.id + '"><span class="nm">' + (z.tm ? '<span class="tm">' + esc(z.tm) + '</span>' : '') + (z.ic ? '<span class="ico">' + z.ic + '</span>' : '') + esc(z.n) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>' +
-        (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>');
+        (z.done || z.ic ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>');
     }).join('') + '</div>';
   }
   $('scCal').addEventListener('click', function (ev) { var b = ev.target.closest('[data-day]'); if (b) { selDay = b.dataset.day; renderSched(); } });
@@ -897,7 +897,7 @@ tr.badrow td{background:var(--out-bg)}
     $('scMemo').value = z ? (z.m || '') : '';
     $('scEnd').value = ''; $('scEndW').hidden = !!z; setIcon(z ? z.ic : '');
     $('dlName').innerHTML = freq('in', 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
-    $('bScPay').hidden = !z || z.done; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
+    $('bScPay').hidden = !z || z.done || !!z.ic; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
     openSheet('shSched');
   }
   $('fSched').addEventListener('submit', function (ev) {
