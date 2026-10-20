@@ -145,6 +145,8 @@ label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mute
 input,textarea,select.f{width:100%;min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--field);padding:0 12px;font-size:16px;color:var(--fg)}
 textarea{padding:10px 12px;line-height:1.4;font-family:var(--mono);font-size:13px;min-height:160px;resize:vertical}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.two.dt{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.two.dt input{padding:0 6px;font-size:15px;min-width:0}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--surface2);border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
 .seg button{border:0;border-radius:9px;background:transparent;height:40px;font-weight:600;color:var(--muted)}
 .seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.18)}
@@ -250,7 +252,7 @@ tr.badrow td{background:var(--out-bg)}
   <div class="grab"></div>
   <h2 id="scTitle">일정 추가</h2>
   <form id="fSched" autocomplete="off">
-    <div class="two"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
+    <div class="two dt"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
     <label>업체 (동네)<input id="scName" list="dlName" required></label>
     <label>메모<input id="scMemo" placeholder="주소, 층수, 연락처 등"></label>
     <button type="button" id="bScPay" class="btn primary" hidden>작업 끝 · 입금 처리</button>
