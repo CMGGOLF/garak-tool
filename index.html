@@ -80,6 +80,8 @@ button{cursor:pointer}
 .cd.sel{outline:2px solid var(--in);outline-offset:-1px}
 .cd .bd{font-size:11px;font-weight:600;border-radius:6px;padding:0 6px;background:var(--in-bg);color:var(--in);line-height:1.55}
 .cd .bd.fin{background:var(--surface2);color:var(--muted)}
+.ics.auto{opacity:.5}
+.sonbar{display:flex}
 .ics{font-size:12px;line-height:1;letter-spacing:1px;white-space:nowrap}
 .ico{font-size:20px;line-height:1;margin-right:6px;vertical-align:-2px}
 #scIcons button{font-size:22px;padding:4px 12px;min-height:44px}
@@ -210,6 +212,7 @@ tr.badrow td{background:var(--out-bg)}
 </main>
 <main class="wrap" id="vSched" hidden>
   <div id="scBanner"></div>
+  <div class="filters"><button type="button" class="chipbtn" id="sonTg" aria-pressed="true">🏠 손 없는 날 표시</button></div>
   <section class="cal" id="scCal" aria-label="월 달력"></section>
   <p class="sub" id="scSum"></p>
   <div id="scList" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -836,7 +839,22 @@ tr.badrow td{background:var(--out-bg)}
   $('tabL').addEventListener('click', function () { setView('l'); });
   $('tabS').addEventListener('click', function () { setView('s'); });
 
+  var showSon = true;
+  try { showSon = localStorage.getItem('ledger.son') !== '0'; } catch (e) { }
+  var lunFmt = null, lunCache = {};
+  try { lunFmt = new Intl.DateTimeFormat('en-u-ca-chinese', { day: 'numeric' }); } catch (e) { }
+  function lunarDay(ds) {
+    if (!lunFmt) return 0;
+    if (lunCache[ds] != null) return lunCache[ds];
+    var v = 0;
+    try { var ps = lunFmt.formatToParts(new Date(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10), 12)); for (var i = 0; i < ps.length; i++) if (ps[i].type === 'day') v = parseInt(ps[i].value, 10) || 0; } catch (e) { }
+    return (lunCache[ds] = v);
+  }
+  function isSon(ds) { var l = lunarDay(ds); return l === 9 || l === 10 || l === 19 || l === 20 || l === 29 || l === 30; }
+  $('sonTg').addEventListener('click', function () { showSon = !showSon; try { localStorage.setItem('ledger.son', showSon ? '1' : '0'); } catch (e) { } renderSched(); });
+
   function renderSched() {
+    $('sonTg').setAttribute('aria-pressed', showSon ? 'true' : 'false');
     var Y = +ym.slice(0, 4), M = +ym.slice(5);
     var dim = new Date(Y, M, 0).getDate(), lead = new Date(Y, M - 1, 1).getDay();
     if (!selDay || selDay.slice(0, 7) !== ym) selDay = ym === CUR ? today() : ym + '-01';
@@ -853,7 +871,7 @@ tr.badrow td{background:var(--out-bg)}
     for (var d = 1; d <= dim; d++) {
       var ds = ym + '-' + pad(d), m = map[ds], dow = (lead + d - 1) % 7;
       h += '<button type="button" class="cd' + (dow === 0 ? ' su' : '') + (ds === td ? ' today' : '') + (ds === selDay ? ' sel' : '') + '" data-day="' + ds + '"><span class="dn">' + d + '</span>' +
-        (icm[ds] ? '<span class="ics">' + icm[ds].slice(0, 3).join('') + '</span>' : '') + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
+        (icm[ds] ? '<span class="ics">' + icm[ds].slice(0, 3).join('') + '</span>' : (showSon && isSon(ds) ? '<span class="ics auto" title="손 없는 날">🏠</span>' : '')) + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
     }
     $('scCal').innerHTML = h;
     $('scSum').textContent = np ? ymLabel(ym) + ' 예정 ' + np + '건' : ymLabel(ym) + ' 예정된 일정이 없습니다';
@@ -861,9 +879,10 @@ tr.badrow td{background:var(--out-bg)}
     var over = S.sched.filter(function (z) { return !z.ic && !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
     $('scBanner').innerHTML = over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '';
 
+    var sonNote = showSon && isSon(selDay) ? '<p class="sub">🏠 손 없는 날 (음력 ' + lunarDay(selDay) + '일)</p>' : '';
     var items = S.sched.filter(function (z) { return z.d === selDay; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : scKey(a) > scKey(b) ? 1 : a.id - b.id; });
-    if (!items.length) { $('scList').innerHTML = '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
-    $('scList').innerHTML = '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
+    if (!items.length) { $('scList').innerHTML = sonNote + '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
+    $('scList').innerHTML = sonNote + '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
       var tags = [];
       if (z.ic) { } else if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
       else if (z.d < td) tags.push('<span class="tag wait">입금 처리 전</span>');
