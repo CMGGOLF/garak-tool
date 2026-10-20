@@ -44,6 +44,7 @@
   --scrim:rgba(0,0,0,.6); --shadow:0 6px 18px rgba(0,0,0,.5);
   color-scheme:dark;
 }
+[hidden]{display:none!important}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.45;min-height:100%}
@@ -63,6 +64,26 @@ button{cursor:pointer}
 .mon select:active{background:var(--surface2)}
 
 .wrap{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:14px 110px;display:flex;flex-direction:column;gap:12px}
+
+/* 탭 / 일정 */
+.bar-tabs{max-width:560px;margin:0 auto;padding:0 12px}
+.bar-tabs .seg{margin-bottom:8px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wh{text-align:center;font-size:12px;color:var(--muted);padding:2px 0}
+.cal .wh.su{color:var(--out)}
+.cd{min-height:58px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:5px 2px 4px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.cd:active{background:var(--field)}
+.cd.blank{border:0;background:transparent;visibility:hidden}
+.cd .dn{font-size:14px;font-weight:600;font-family:var(--mono);min-width:24px;text-align:center;border-radius:999px;padding:0 4px}
+.cd.su .dn{color:var(--out)}
+.cd.today .dn{background:var(--in);color:var(--on-in)}
+.cd.sel{outline:2px solid var(--in);outline-offset:-1px}
+.cd .bd{font-size:11px;font-weight:600;border-radius:6px;padding:0 6px;background:var(--in-bg);color:var(--in);line-height:1.55}
+.cd .bd.fin{background:var(--surface2);color:var(--muted)}
+.scgo{display:block;width:100%;border:0;border-top:1px solid var(--line);background:var(--in-bg);color:var(--in);font-weight:600;min-height:44px}
+.scgo:active{opacity:.8}
+.tm{font-family:var(--mono);color:var(--muted);font-weight:500;margin-right:6px}
+.sheet .btn{width:100%}
 
 /* 합계 */
 .tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
@@ -170,15 +191,23 @@ tr.badrow td{background:var(--out-bg)}
   <label class="mon"><select id="monthSel" aria-label="월 선택"></select></label>
   <button class="ic" id="next" type="button" aria-label="다음 달">›</button>
   <button class="ic" id="menuBtn" type="button" aria-label="메뉴">⋯</button>
-</div></header>
+</div>
+<div class="bar-tabs"><div class="seg"><button type="button" id="tabL" class="on">장부</button><button type="button" id="tabS">일정</button></div></div>
+</header>
 
-<main class="wrap">
+<main class="wrap" id="vLedger">
   <section class="tiles" id="tiles" aria-label="월 합계"></section>
   <p class="sub" id="sub"></p>
   <div class="search"><input id="q" type="search" enterkeyhint="search" placeholder="업체·동네·메모 검색 (전체 기간)" aria-label="검색"></div>
   <div class="filters"><button type="button" class="chipbtn" id="outTg" aria-pressed="false">지출 내역 보기</button></div>
   <div id="banner"></div>
   <div id="list" style="display:flex;flex-direction:column;gap:12px"></div>
+</main>
+<main class="wrap" id="vSched" hidden>
+  <div id="scBanner"></div>
+  <section class="cal" id="scCal" aria-label="월 달력"></section>
+  <p class="sub" id="scSum"></p>
+  <div id="scList" style="display:flex;flex-direction:column;gap:12px"></div>
 </main>
 <button class="fab" id="fab" type="button" aria-label="내역 추가">+</button>
 
@@ -214,6 +243,19 @@ tr.badrow td{background:var(--out-bg)}
       <button type="submit" id="bNext" hidden>저장하고 계속</button>
       <button type="submit" id="bSave" class="primary">저장</button>
     </div>
+  </form>
+</section>
+
+<section class="sheet" id="shSched" hidden role="dialog" aria-modal="true" aria-labelledby="scTitle">
+  <div class="grab"></div>
+  <h2 id="scTitle">일정 추가</h2>
+  <form id="fSched" autocomplete="off">
+    <div class="two"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
+    <label>업체 (동네)<input id="scName" list="dlName" required></label>
+    <label>메모<input id="scMemo" placeholder="주소, 층수, 연락처 등"></label>
+    <button type="button" id="bScPay" class="btn primary" hidden>작업 끝 · 입금 처리</button>
+    <button type="button" id="bScUndo" class="btn" hidden>완료 취소 (장부 내역은 그대로 둡니다)</button>
+    <div class="btns"><button type="button" id="bScDel" class="danger" hidden>삭제</button><button type="submit" class="primary">저장</button></div>
   </form>
 </section>
 
@@ -383,13 +425,15 @@ tr.badrow td{background:var(--out-bg)}
   var KEY = 'ledger.v1';
   var $ = function (id) { return document.getElementById(id); };
   var DEF_FIXED = [{ n: '주차', a: 100000, m: '' }, { n: '국민연금', a: 410000, m: '' }, { n: '콜회비/무전', a: 200000, m: '삼,이,후,3' }];
-  var S = { v: 1, seq: 1, entries: [], fixed: DEF_FIXED.map(function (x) { return Object.assign({}, x); }) };
+  var S = { v: 1, seq: 1, sseq: 1, sched: [], entries: [], fixed: DEF_FIXED.map(function (x) { return Object.assign({}, x); }) };
   var storeOk = true;
 
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
       if (raw) { var o = JSON.parse(raw); if (o && Array.isArray(o.entries)) S = Object.assign(S, o); }
+      if (!Array.isArray(S.sched)) S.sched = [];
+      var mx = 0; S.sched.forEach(function (x) { if (x.id > mx) mx = x.id; }); if (!(S.sseq > mx)) S.sseq = mx + 1;
     } catch (e) { storeOk = false; }
   }
   function save() {
@@ -440,6 +484,7 @@ tr.badrow td{background:var(--out-bg)}
     var min = minYm() || CUR, max = addM(CUR, 1);
     if (min > CUR) min = CUR;
     S.entries.forEach(function (e) { var k = e.d.slice(0, 7); if (k > max) max = k; });
+    S.sched.forEach(function (e) { var k = e.d.slice(0, 7); if (k > max) max = k; });
     if (ym > max) max = ym; if (ym < min) min = ym;
     var html = '', k = max, guard = 0;
     while (k >= min && guard++ < 600) { html += '<option value="' + k + '"' + (k === ym ? ' selected' : '') + '>' + ymLabel(k) + '</option>'; k = addM(k, -1); }
@@ -466,6 +511,7 @@ tr.badrow td{background:var(--out-bg)}
 
   function render() {
     renderMonthSel();
+    renderSched();
     var searching = q.trim() !== '';
     var list, t;
     if (searching) {
@@ -574,9 +620,10 @@ tr.badrow td{background:var(--out-bg)}
   $('fAmt').addEventListener('input', function () { var d = this.value.replace(/\D/g, ''); this.value = d ? fmt(parseInt(d, 10)) : ''; updJob(); });
   $('fExtra').addEventListener('input', updJob);
   $('fBusy').addEventListener('input', updJob);
-  $('fab').addEventListener('click', function () { openEntry(); });
+  $('fab').addEventListener('click', function () { if (view === 's') openSched(); else openEntry(); });
 
-  function openEntry(id) {
+  var schedLink = null;
+  function openEntry(id, pre) {
     editing = id ? S.entries.filter(function (e) { return e.id === id; })[0] : null;
     var e = editing;
     $('entryTitle').textContent = e ? '내역 수정' : '내역 추가';
@@ -588,8 +635,14 @@ tr.badrow td{background:var(--out-bg)}
     $('fBusy').value = e && e.b ? e.b : '';
     setPay(e ? (e.p || '') : '이');
     $('fMemo').value = e ? (e.m || '') : '';
+    schedLink = null;
+    if (pre && !e) {
+      schedLink = pre.sid; $('entryTitle').textContent = '입금 처리 (장부에 기록)';
+      $('fDate').value = pre.d; $('fName').value = pre.n; $('fAmt').value = pre.a ? fmt(pre.a) : '';
+      $('fExtra').value = pre.x !== '' && pre.x != null ? pre.x : ''; $('fBusy').value = pre.b ? pre.b : ''; $('fMemo').value = pre.m || ''; setPay('이');
+    }
     updJob();
-    $('bDel').hidden = !e; $('bNext').hidden = !!e;
+    $('bDel').hidden = !e; $('bNext').hidden = !!e || !!schedLink;
     $('tIn').disabled = $('tOut').disabled = false;
     openSheet('shEntry');
   }
@@ -601,6 +654,8 @@ tr.badrow td{background:var(--out-bg)}
     var x = $('fExtra').value.trim(), bb = $('fBusy').value.trim();
     var rec = { d: d, t: kind, n: name, a: a, x: kind === 'in' ? (x !== '' && isFinite(Number(x)) ? Number(x) : x) : '', b: kind === 'in' && bb !== '' && isFinite(Number(bb)) ? Number(bb) : 0, p: kind === 'in' ? $('fPay').value.trim() : '', m: $('fMemo').value.trim() };
     if (editing) Object.assign(editing, rec); else { rec.id = S.seq++; S.entries.push(rec); }
+    if (!editing && schedLink) { var sc0 = S.sched.filter(function (z) { return z.id === schedLink; })[0]; if (sc0) sc0.done = true; }
+    schedLink = null;
     save(); ym = d.slice(0, 7); q = ''; $('q').value = '';
     if (more) {
       $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; $('fBusy').value = ''; setPay('이'); $('fMemo').value = ''; updJob();
@@ -708,6 +763,11 @@ tr.badrow td{background:var(--out-bg)}
       if (!ok) return;
       S.entries = ents; S.seq = seq;
       if (Array.isArray(o.fixed)) S.fixed = o.fixed.filter(function (f) { return f && f.n; }).map(function (f) { return { n: String(f.n), a: Number(f.a) || 0, m: String(f.m || '') }; });
+      if (Array.isArray(o.sched)) {
+        var ss = [], sq = 1;
+        o.sched.forEach(function (z) { if (z && /^\d{4}-\d{2}-\d{2}$/.test(z.d)) ss.push({ id: sq++, d: z.d, tm: String(z.tm || ''), n: String(z.n || ''), m: String(z.m || ''), done: !!z.done }); });
+        S.sched = ss; S.sseq = sq;
+      }
       save(); closeSheet(); render(); toast('복원했습니다');
     });
   });
@@ -755,7 +815,98 @@ tr.badrow td{background:var(--out-bg)}
     save(); ym = latest || CUR; q = ''; $('q').value = ''; closeSheet(); render(); toast(n + '건을 가져왔습니다');
   });
 
+  /* ---------- 일정(달력) ---------- */
+  var view = 'l', selDay = null, editingSc = null;
+  try { view = localStorage.getItem('ledger.view') === 's' ? 's' : 'l'; } catch (e) { }
+  function scKey(z) { return z.d + ' ' + (z.tm || '99:99'); }
+  function applyView() {
+    var s = view === 's';
+    $('vLedger').hidden = s; $('vSched').hidden = !s;
+    $('tabL').classList.toggle('on', !s); $('tabS').classList.toggle('on', s);
+    $('fab').setAttribute('aria-label', s ? '일정 추가' : '내역 추가');
+  }
+  function setView(v) { view = v; try { localStorage.setItem('ledger.view', v); } catch (e) { } applyView(); render(); window.scrollTo(0, 0); }
+  $('tabL').addEventListener('click', function () { setView('l'); });
+  $('tabS').addEventListener('click', function () { setView('s'); });
+
+  function renderSched() {
+    var Y = +ym.slice(0, 4), M = +ym.slice(5);
+    var dim = new Date(Y, M, 0).getDate(), lead = new Date(Y, M - 1, 1).getDay();
+    if (!selDay || selDay.slice(0, 7) !== ym) selDay = ym === CUR ? today() : ym + '-01';
+    var map = {}, np = 0, td = today();
+    S.sched.forEach(function (z) {
+      if (z.d.slice(0, 7) !== ym) return;
+      var m = map[z.d] || (map[z.d] = { p: 0, f: 0 });
+      if (z.done) m.f++; else { m.p++; np++; }
+    });
+    var h = '';
+    WD.forEach(function (w, i) { h += '<div class="wh' + (i === 0 ? ' su' : '') + '">' + w + '</div>'; });
+    for (var i = 0; i < lead; i++) h += '<div class="cd blank"></div>';
+    for (var d = 1; d <= dim; d++) {
+      var ds = ym + '-' + pad(d), m = map[ds], dow = (lead + d - 1) % 7;
+      h += '<button type="button" class="cd' + (dow === 0 ? ' su' : '') + (ds === td ? ' today' : '') + (ds === selDay ? ' sel' : '') + '" data-day="' + ds + '"><span class="dn">' + d + '</span>' +
+        (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
+    }
+    $('scCal').innerHTML = h;
+    $('scSum').textContent = np ? ymLabel(ym) + ' 예정 ' + np + '건' : ymLabel(ym) + ' 예정된 일정이 없습니다';
+
+    var over = S.sched.filter(function (z) { return !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
+    $('scBanner').innerHTML = over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '';
+
+    var items = S.sched.filter(function (z) { return z.d === selDay; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : scKey(a) > scKey(b) ? 1 : a.id - b.id; });
+    if (!items.length) { $('scList').innerHTML = '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
+    $('scList').innerHTML = '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
+      var tags = [];
+      if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
+      else if (z.d < td) tags.push('<span class="tag wait">입금 처리 전</span>');
+      if (z.m) tags.push('<span class="memo">' + esc(z.m) + '</span>');
+      return '<button type="button" class="row in" data-sid="' + z.id + '"><span class="nm">' + (z.tm ? '<span class="tm">' + esc(z.tm) + '</span>' : '') + esc(z.n) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>' +
+        (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>');
+    }).join('') + '</div>';
+  }
+  $('scCal').addEventListener('click', function (ev) { var b = ev.target.closest('[data-day]'); if (b) { selDay = b.dataset.day; renderSched(); } });
+  $('scBanner').addEventListener('click', function (ev) { var b = ev.target.closest('#scOver'); if (b) { selDay = b.dataset.d; ym = selDay.slice(0, 7); render(); } });
+  $('scList').addEventListener('click', function (ev) {
+    var g = ev.target.closest('[data-go]'); if (g) { payFromSched(+g.dataset.go); return; }
+    var b = ev.target.closest('[data-sid]'); if (b) openSched(+b.dataset.sid);
+  });
+
+  function findSc(id) { return S.sched.filter(function (z) { return z.id === id; })[0]; }
+  function openSched(id) {
+    editingSc = id ? findSc(id) : null;
+    var z = editingSc;
+    $('scTitle').textContent = z ? '일정 수정' : '일정 추가';
+    $('scDate').value = z ? z.d : (selDay || today());
+    $('scTime').value = z ? (z.tm || '') : '';
+    $('scName').value = z ? z.n : '';
+    $('scMemo').value = z ? (z.m || '') : '';
+    $('dlName').innerHTML = freq('in', 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
+    $('bScPay').hidden = !z || z.done; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
+    openSheet('shSched');
+  }
+  $('fSched').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = $('scDate').value, name = $('scName').value.trim();
+    if (!d || !name) { toast('날짜와 업체를 확인해 주세요.'); return; }
+    var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim() };
+    if (editingSc) Object.assign(editingSc, rec); else { rec.id = S.sseq++; rec.done = false; S.sched.push(rec); }
+    save(); selDay = d; ym = d.slice(0, 7); closeSheet(); render(); toast('일정을 저장했습니다');
+  });
+  $('bScDel').addEventListener('click', function () {
+    var z = editingSc; if (!z) return;
+    ask('이 일정을 삭제할까요?', z.n + ' ' + z.d, '삭제', true).then(function (ok) {
+      if (!ok) return; S.sched = S.sched.filter(function (k) { return k !== z; }); save(); closeSheet(); render(); toast('삭제했습니다');
+    });
+  });
+  $('bScUndo').addEventListener('click', function () { var z = editingSc; if (!z) return; z.done = false; save(); closeSheet(); render(); toast('완료를 취소했습니다. 장부에 넣은 내역은 그대로입니다.'); });
+  $('bScPay').addEventListener('click', function () { if (editingSc) payFromSched(editingSc.id); });
+  function payFromSched(id) {
+    var z = findSc(id); if (!z) return;
+    closeSheet(); openEntry(null, { sid: z.id, d: z.d, n: z.n, a: 0, x: '', b: 0, m: z.m });
+  }
+
   load();
+  applyView();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   S.entries.forEach(function (e) { e.p = LedgerCore.normPay(e.p); if (e.t === 'in' && e.b == null) e.b = LedgerCore.parseBusy(e.m); });
   render();
