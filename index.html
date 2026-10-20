@@ -253,6 +253,7 @@ tr.badrow td{background:var(--out-bg)}
   <h2 id="scTitle">일정 추가</h2>
   <form id="fSched" autocomplete="off">
     <div class="two dt"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
+    <label id="scEndW">끝나는 날 (여러 날 같은 일정이면 입력)<input id="scEnd" type="date"></label>
     <label>업체 (동네)<input id="scName" list="dlName" required></label>
     <label>메모<input id="scMemo" placeholder="주소, 층수, 연락처 등"></label>
     <button type="button" id="bScPay" class="btn primary" hidden>작업 끝 · 입금 처리</button>
@@ -882,6 +883,7 @@ tr.badrow td{background:var(--out-bg)}
     $('scTime').value = z ? (z.tm || '') : '';
     $('scName').value = z ? z.n : '';
     $('scMemo').value = z ? (z.m || '') : '';
+    $('scEnd').value = ''; $('scEndW').hidden = !!z;
     $('dlName').innerHTML = freq('in', 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
     $('bScPay').hidden = !z || z.done; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
     openSheet('shSched');
@@ -891,8 +893,22 @@ tr.badrow td{background:var(--out-bg)}
     var d = $('scDate').value, name = $('scName').value.trim();
     if (!d || !name) { toast('날짜와 업체를 확인해 주세요.'); return; }
     var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim() };
-    if (editingSc) Object.assign(editingSc, rec); else { rec.id = S.sseq++; rec.done = false; S.sched.push(rec); }
-    save(); selDay = d; ym = d.slice(0, 7); closeSheet(); render(); toast('일정을 저장했습니다');
+    var cnt = 1;
+    if (editingSc) Object.assign(editingSc, rec);
+    else {
+      var end = $('scEnd').value;
+      if (end && end < d) { toast('끝나는 날이 시작 날짜보다 빠릅니다.'); return; }
+      var days = [d];
+      if (end && end > d) {
+        var cur = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)), stop = new Date(+end.slice(0, 4), +end.slice(5, 7) - 1, +end.slice(8, 10));
+        if ((stop - cur) / 864e5 > 92) { toast('한 번에 최대 93일까지 넣을 수 있습니다.'); return; }
+        days = [];
+        for (; cur <= stop; cur.setDate(cur.getDate() + 1)) days.push(cur.getFullYear() + '-' + pad(cur.getMonth() + 1) + '-' + pad(cur.getDate()));
+      }
+      days.forEach(function (dd) { S.sched.push({ id: S.sseq++, d: dd, tm: rec.tm, n: rec.n, m: rec.m, done: false }); });
+      cnt = days.length;
+    }
+    save(); selDay = d; ym = d.slice(0, 7); closeSheet(); render(); toast(cnt > 1 ? cnt + '일 일정을 저장했습니다' : '일정을 저장했습니다');
   });
   $('bScDel').addEventListener('click', function () {
     var z = editingSc; if (!z) return;
