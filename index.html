@@ -86,6 +86,16 @@ button{cursor:pointer}
 .scgo:active{opacity:.8}
 .tm{font-family:var(--mono);color:var(--muted);font-weight:500;margin-right:6px}
 .sheet .btn{width:100%}
+.cloudbar{max-width:560px;margin:8px auto 0;padding:0 12px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.cloudbar:not([hidden]){display:flex}
+.cloudbar span{flex:1;min-width:0}
+.cloudbar button{border:1px solid var(--line);background:var(--surface);border-radius:999px;min-height:36px;padding:0 14px;font-size:13px;font-weight:600;color:var(--in)}
+.cd .bd.rm{background:var(--warn-bg);color:var(--warn)}
+.alrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}
+.alrow .tx{flex:1;min-width:0}.alrow b{display:block;font-size:16px;overflow-wrap:anywhere}.alrow span{font-size:13px;color:var(--muted)}
+.alrow .dd{font-family:var(--mono);font-weight:600;font-size:14px;border-radius:8px;padding:2px 8px;background:var(--warn-bg);color:var(--warn);white-space:nowrap}
+.alrow .dd.over{background:var(--out-bg);color:var(--out)}
+.alrow button{border:1px solid var(--line);background:var(--field);border-radius:10px;min-height:40px;padding:0 10px;font-size:13px}
 
 /* 합계 */
 .tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
@@ -198,6 +208,7 @@ tr.badrow td{background:var(--out-bg)}
 </div>
 <div class="bar-tabs"><div class="seg"><button type="button" id="tabL" class="on">장부</button><button type="button" id="tabS">일정</button></div></div>
 </header>
+<div class="cloudbar" id="cloudBar" hidden><span id="cloudMsg">이 폰에만 저장 중입니다.</span><button type="button" id="cloudLogin">서버 로그인</button></div>
 
 <main class="wrap" id="vLedger">
   <section class="tiles" id="tiles" aria-label="월 합계"></section>
@@ -257,7 +268,9 @@ tr.badrow td{background:var(--out-bg)}
   <form id="fSched" autocomplete="off">
     <div class="two dt"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
     <label id="scEndW">끝나는 날 (여러 날 같은 일정이면 입력)<input id="scEnd" type="date"></label>
-    <label>업체 (동네)<input id="scName" list="dlName" required></label>
+    <label>종류<select id="scKind"><option value="w">작업 일정 (입금 처리 있음)</option><option value="r">알림 일정 (만료일, 세금 내는 날 등)</option></select></label>
+    <label id="scLeadW" hidden>며칠 전부터 알려줄까요<select id="scLead"><option value="0">당일부터</option><option value="1">1일 전부터</option><option value="3" selected>3일 전부터</option><option value="7">7일 전부터</option><option value="14">14일 전부터</option></select></label>
+    <label><span id="scNameL">업체 (동네)</span><input id="scName" list="dlName" required></label>
     <label>메모<input id="scMemo" placeholder="주소, 층수, 연락처 등"></label>
     <button type="button" id="bScPay" class="btn primary" hidden>작업 끝 · 입금 처리</button>
     <button type="button" id="bScUndo" class="btn" hidden>완료 취소 (장부 내역은 그대로 둡니다)</button>
@@ -265,10 +278,18 @@ tr.badrow td{background:var(--out-bg)}
   </form>
 </section>
 
+<section class="sheet" id="shAlert" hidden role="dialog" aria-modal="true" aria-labelledby="alTitle">
+  <div class="grab"></div>
+  <h2 id="alTitle">🔔 알림</h2>
+  <div id="alList"></div>
+  <button type="button" id="alClose" class="btn primary">확인</button>
+</section>
+
 <section class="sheet" id="shMenu" hidden role="dialog" aria-modal="true" aria-label="메뉴">
   <div class="grab"></div>
   <h2>메뉴</h2>
   <div class="menu">
+    <button type="button" data-act="cloud"><b id="cloudT">서버 저장 로그인</b><span id="cloudS"></span></button>
     <button type="button" data-act="import"><b>엑셀 가져오기</b><span>월별 시트가 있는 .xlsx 파일을 읽어옵니다</span></button>
     <button type="button" data-act="fixedAdd"><b>이 달 고정지출 넣기</b><span id="fxHint"></span></button>
     <button type="button" data-act="fixedEdit"><b>고정지출 설정</b><span>주차, 국민연금, 콜회비 같은 매달 같은 항목</span></button>
@@ -434,6 +455,159 @@ tr.badrow td{background:var(--out-bg)}
   var S = { v: 1, seq: 1, sseq: 1, sched: [], entries: [], fixed: DEF_FIXED.map(function (x) { return Object.assign({}, x); }) };
   var storeOk = true;
 
+  /* ---------- 서버 저장 (Firebase: 구글 로그인 + Firestore) ---------- */
+  var FB_CONFIG = {
+    apiKey: "AIzaSyCpHBSphRfLLi5AIetouZkZ_dDSB0H7rcY",
+    authDomain: "cmg-dcc74.firebaseapp.com",
+    projectId: "cmg-dcc74",
+    storageBucket: "cmg-dcc74.firebasestorage.app",
+    messagingSenderId: "245460369615",
+    appId: "1:245460369615:web:20cb3eaf6ad3486eaa77ba"
+  };
+  var FB_BASE = 'https://www.gstatic.com/firebasejs/10.12.5/';
+  var cloud = { m: null, auth: null, db: null, user: null, state: 'off', err: '' };
+  var dirtyVer = 0, pushTimer = null, pushing = false, firstSnap = false, lastSent = {}, remoteIds = [], unsubSnap = null;
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; }).map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+    return JSON.stringify(v);
+  }
+  function plain(v) { return JSON.parse(JSON.stringify(v)); }
+  function isDirty() { try { return localStorage.getItem('ledger.dirty') === '1'; } catch (e) { return false; } }
+  function setDirty(on) { try { if (on) localStorage.setItem('ledger.dirty', '1'); else localStorage.removeItem('ledger.dirty'); } catch (e) { } }
+  function markDirty() { setDirty(true); dirtyVer++; if (cloud.user && firstSnap) schedulePush(); cloudUI(); }
+  function schedulePush() { clearTimeout(pushTimer); pushTimer = setTimeout(pushNow, 700); }
+  function cloudText() {
+    if (cloud.state === 'off') return '이 폰에만 저장 중입니다. 서버 연결을 불러오지 못했습니다(인터넷 확인).';
+    if (!cloud.user) return '이 폰에만 저장 중입니다. 로그인하면 서버에도 저장됩니다.';
+    if (cloud.state === 'error') return '서버 저장 실패: ' + cloud.err + ' (이 폰에는 저장돼 있습니다)';
+    if (cloud.state === 'sync' || isDirty()) return '서버에 저장하는 중…';
+    return '서버에 저장됨 · ' + (cloud.user.email || '');
+  }
+  function cloudUI() {
+    var bar = $('cloudBar'); if (!bar) return;
+    var need = !cloud.user || cloud.state === 'error';
+    bar.hidden = !need;
+    $('cloudMsg').textContent = cloudText();
+    $('cloudLogin').hidden = !!cloud.user;
+    $('cloudT').textContent = cloud.user ? '서버 저장: 로그인됨' : '서버 저장 로그인';
+    $('cloudS').textContent = cloudText() + (cloud.user ? ' (누르면 로그아웃)' : '');
+  }
+  /* 이 폰 내용과 서버 내용(lastSent)을 비교해 올려야 할 문서 목록을 만듦 */
+  function diffOps() {
+    var by = {}, ops = [];
+    S.entries.forEach(function (e) { var k = e.d.slice(0, 7); (by[k] = by[k] || []).push(e); });
+    Object.keys(by).forEach(function (k) {
+      var arr = plain(by[k]), c = canon(arr), id = 'm_' + k;
+      if (lastSent[id] !== c) ops.push({ id: id, data: { entries: arr }, c: c });
+    });
+    remoteIds.forEach(function (id) { if (id.indexOf('m_') === 0 && !by[id.slice(2)]) ops.push({ id: id, del: true }); });
+    var meta = plain({ fixed: S.fixed, sched: S.sched, seq: S.seq, sseq: S.sseq }), mc = canon(meta);
+    if (lastSent.meta !== mc) ops.push({ id: 'meta', data: meta, c: mc });
+    return ops;
+  }
+  async function pushNow() {
+    if (!cloud.user || !cloud.m || pushing || !firstSnap) return;
+    pushing = true; cloud.state = 'sync';
+    var ver = dirtyVer, m = cloud.m, uid = cloud.user.uid;
+    try {
+      var ops = diffOps();
+      for (var i = 0; i < ops.length; i += 400) {
+        var batch = m.writeBatch(cloud.db);
+        ops.slice(i, i + 400).forEach(function (o) {
+          var ref = m.doc(cloud.db, 'users', uid, 'ledger', o.id);
+          if (o.del) batch.delete(ref); else batch.set(ref, o.data);
+        });
+        await batch.commit();
+      }
+      ops.forEach(function (o) {
+        if (o.del) { delete lastSent[o.id]; remoteIds = remoteIds.filter(function (x) { return x !== o.id; }); }
+        else { lastSent[o.id] = o.c; if (remoteIds.indexOf(o.id) < 0) remoteIds.push(o.id); }
+      });
+      pushing = false; cloud.state = 'ok';
+      if (ver === dirtyVer) setDirty(false); else schedulePush();
+    } catch (e) {
+      pushing = false; cloud.state = 'error'; cloud.err = (e && (e.code || e.message)) || '알 수 없는 오류';
+    }
+    cloudUI();
+  }
+  function applyRemote(docs) {
+    var ents = [], maxId = 0;
+    Object.keys(docs).forEach(function (id) {
+      if (id.indexOf('m_') === 0 && Array.isArray(docs[id].entries)) docs[id].entries.forEach(function (e) { ents.push(e); if (e.id > maxId) maxId = e.id; });
+    });
+    ents.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : a.id - b.id; });
+    var meta = docs.meta || {};
+    S.entries = ents;
+    if (Array.isArray(meta.fixed)) S.fixed = meta.fixed;
+    S.sched = Array.isArray(meta.sched) ? meta.sched : [];
+    S.seq = Math.max(Number(meta.seq) || 1, maxId + 1);
+    var ms = 0; S.sched.forEach(function (z) { if (z.id > ms) ms = z.id; }); S.sseq = Math.max(Number(meta.sseq) || 1, ms + 1);
+    normalizeState();
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { }
+    render();
+  }
+  function onSnap(snap) {
+    if (snap.metadata.fromCache || snap.metadata.hasPendingWrites) return;
+    var docs = {}; snap.forEach(function (d) { docs[d.id] = d.data(); });
+    remoteIds = Object.keys(docs); lastSent = {};
+    remoteIds.forEach(function (id) { lastSent[id] = id === 'meta' ? canon(docs[id]) : canon(docs[id].entries || []); });
+    var hasRemote = remoteIds.length > 0, localHas = S.entries.length > 0 || S.sched.length > 0;
+    var first = !firstSnap; firstSnap = true;
+    if (first) {
+      if (!hasRemote) { if (localHas) { setDirty(true); dirtyVer++; pushNow(); toast('이 폰의 내역을 서버에 올립니다'); } cloud.state = 'ok'; cloudUI(); return; }
+      if (isDirty()) { pushNow(); return; }
+      if (localHas) {
+        try { localStorage.setItem('ledger.v1.beforeCloud', JSON.stringify(S)); } catch (e) { }
+        applyRemote(docs); cloud.state = 'ok'; cloudUI();
+        toast('서버 내용을 불러왔습니다. 이 폰의 이전 내용은 따로 보관했습니다.');
+        return;
+      }
+      applyRemote(docs); cloud.state = 'ok'; cloudUI(); toast('서버에서 내역을 불러왔습니다'); return;
+    }
+    if (isDirty() || pushing) return;
+    if (!diffOps().length) { cloud.state = 'ok'; cloudUI(); return; }
+    if (openId) return;
+    applyRemote(docs); cloud.state = 'ok'; cloudUI();
+  }
+  function attachSnap() {
+    if (unsubSnap) { unsubSnap(); unsubSnap = null; }
+    firstSnap = false;
+    var m = cloud.m;
+    unsubSnap = m.onSnapshot(m.collection(cloud.db, 'users', cloud.user.uid, 'ledger'), { includeMetadataChanges: true }, onSnap, function (e) {
+      cloud.state = 'error'; cloud.err = (e && (e.code || e.message)) || '읽기 오류'; cloudUI();
+    });
+  }
+  function startCloud() {
+    var f = function (n) { return import(FB_BASE + n); };
+    var P; try { P = Promise.all([f('firebase-app.js'), f('firebase-auth.js'), f('firebase-firestore.js')]); } catch (e) { cloud.state = 'off'; cloudUI(); return; }
+    P.then(function (mods) {
+      var app = mods[0].initializeApp(FB_CONFIG);
+      cloud.m = Object.assign({}, mods[1], mods[2]);
+      cloud.auth = mods[1].getAuth(app); cloud.db = mods[2].getFirestore(app);
+      cloud.state = 'ok';
+      mods[1].onAuthStateChanged(cloud.auth, function (u) {
+        cloud.user = u || null;
+        if (u) attachSnap(); else { if (unsubSnap) { unsubSnap(); unsubSnap = null; } firstSnap = false; }
+        cloudUI();
+      });
+      cloudUI();
+    }).catch(function () { cloud.state = 'off'; cloudUI(); });
+  }
+  async function cloudLogin() {
+    if (!cloud.m) { toast('서버 연결을 불러오지 못했습니다. 인터넷을 확인하고 앱을 다시 열어 주세요.'); return; }
+    var prov = new cloud.m.GoogleAuthProvider(); prov.setCustomParameters({ prompt: 'select_account' });
+    try { await cloud.m.signInWithPopup(cloud.auth, prov); }
+    catch (e) {
+      var c = e && e.code;
+      if (c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment') { try { await cloud.m.signInWithRedirect(cloud.auth, prov); } catch (e2) { toast('로그인을 시작하지 못했습니다: ' + ((e2 && e2.code) || '')); } }
+      else if (c !== 'auth/popup-closed-by-user' && c !== 'auth/cancelled-popup-request') toast('로그인 실패: ' + (c || (e && e.message) || ''));
+    }
+  }
+  function cloudLogout() {
+    ask('로그아웃할까요?', '서버에 저장된 내용은 그대로 있습니다. 이 폰의 내역도 남습니다.', '로그아웃', false).then(function (ok) { if (ok) cloud.m.signOut(cloud.auth); });
+  }
+
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
@@ -442,9 +616,15 @@ tr.badrow td{background:var(--out-bg)}
       var mx = 0; S.sched.forEach(function (x) { if (x.id > mx) mx = x.id; }); if (!(S.sseq > mx)) S.sseq = mx + 1;
     } catch (e) { storeOk = false; }
   }
+  function normalizeState() {
+    S.sched = S.sched.filter(function (z) { return !(z.ic && !z.n); });
+    S.sched.forEach(function (z) { delete z.ic; });
+    S.entries.forEach(function (e) { e.p = LedgerCore.normPay(e.p); if (e.t === 'in' && e.b == null) e.b = LedgerCore.parseBusy(e.m); });
+  }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); storeOk = true; }
     catch (e) { storeOk = false; toast('이 브라우저에 저장하지 못했습니다. 백업을 복사해 두세요.'); }
+    markDirty();
   }
 
   var pad = function (n) { return String(n).padStart(2, '0'); };
@@ -709,12 +889,14 @@ tr.badrow td{background:var(--out-bg)}
     $('storeNote').textContent = storeOk
       ? '내역은 이 휴대폰의 브라우저에만 저장됩니다. 브라우저 데이터를 지우면 사라지니 가끔 전체 백업을 복사해 두세요.'
       : '지금 이 브라우저는 저장을 막고 있어 앱을 닫으면 내역이 사라질 수 있습니다. 시크릿 창이면 일반 창에서 열어 주세요.';
+    cloudUI();
     openSheet('shMenu');
   });
   $('shMenu').addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
-    if (act === 'import') { closeSheet(); $('file').click(); }
+    if (act === 'cloud') { closeSheet(); if (cloud.user) cloudLogout(); else cloudLogin(); }
+    else if (act === 'import') { closeSheet(); $('file').click(); }
     else if (act === 'fixedAdd') { var n = addFixed(ym); closeSheet(); render(); toast(n ? ('고정지출 ' + n + '건을 넣었습니다') : '넣을 항목이 없거나 이미 모두 있습니다'); }
     else if (act === 'fixedEdit') { renderFixed(); openSheet('shFixed'); }
     else if (act === 'copyMonth') showData('out', ymLabel(ym) + ' 표', '아래 글자를 복사해 엑셀이나 구글 시트의 A1 칸에 붙여넣으세요.', monthTSV(ym));
@@ -722,7 +904,7 @@ tr.badrow td{background:var(--out-bg)}
     else if (act === 'restore') showData('in', '백업 복원', '복사해 둔 백업 글자를 아래에 붙여넣고 복원을 누르세요. 지금 내역은 백업 내용으로 바뀝니다.', '');
     else if (act === 'wipe') {
       closeSheet();
-      ask('모든 내역을 지울까요?', '이 휴대폰에 저장된 내역 ' + S.entries.length + '건이 사라지고 되돌릴 수 없습니다.', '모두 지우기', true).then(function (ok) {
+      ask('모든 내역을 지울까요?', (cloud.user ? '서버에 저장된 내역도 함께 지워집니다. ' : '') + '내역 ' + S.entries.length + '건이 사라지고 되돌릴 수 없습니다.', '모두 지우기', true).then(function (ok) {
         if (!ok) return; S.entries = []; S.seq = 1; save(); render(); toast('모든 내역을 지웠습니다');
       });
     }
@@ -771,7 +953,7 @@ tr.badrow td{background:var(--out-bg)}
       if (Array.isArray(o.fixed)) S.fixed = o.fixed.filter(function (f) { return f && f.n; }).map(function (f) { return { n: String(f.n), a: Number(f.a) || 0, m: String(f.m || '') }; });
       if (Array.isArray(o.sched)) {
         var ss = [], sq = 1;
-        o.sched.forEach(function (z) { if (z && /^\d{4}-\d{2}-\d{2}$/.test(z.d)) ss.push({ id: sq++, d: z.d, tm: String(z.tm || ''), n: String(z.n || ''), m: String(z.m || ''), done: !!z.done }); });
+        o.sched.forEach(function (z) { if (z && /^\d{4}-\d{2}-\d{2}$/.test(z.d)) ss.push({ id: sq++, d: z.d, tm: String(z.tm || ''), n: String(z.n || ''), m: String(z.m || ''), k: z.k === 'r' ? 'r' : 'w', lead: Number(z.lead) || 0, done: !!z.done }); });
         S.sched = ss; S.sseq = sq;
       }
       save(); closeSheet(); render(); toast('복원했습니다');
@@ -855,11 +1037,19 @@ tr.badrow td{background:var(--out-bg)}
     var Y = +ym.slice(0, 4), M = +ym.slice(5);
     var dim = new Date(Y, M, 0).getDate(), lead = new Date(Y, M - 1, 1).getDay();
     if (!selDay || selDay.slice(0, 7) !== ym) selDay = ym === CUR ? today() : ym + '-01';
-    var map = {}, np = 0, td = today();
+    var map = {}, np = 0, nw = 0, td = today();
     S.sched.forEach(function (z) {
-      if (z.d.slice(0, 7) !== ym) return;
-      var m = map[z.d] || (map[z.d] = { p: 0, f: 0 });
-      if (z.done) m.f++; else { m.p++; np++; }
+      if (z.k !== 'r' || z.done || z.d.slice(0, 7) !== ym) return;
+      var m = map[z.d] || (map[z.d] = { p: 0, f: 0, r: 0 }); m.r = (m.r || 0) + 1;
+    });
+    /* 입금 처리한 일정은 장부 내역이 대신 보이므로 목록과 건수에서 뺌 */
+    S.sched.forEach(function (z) {
+      if (z.k === 'r' || z.d.slice(0, 7) !== ym || z.done) return;
+      var m = map[z.d] || (map[z.d] = { p: 0, f: 0 }); m.p++; np++;
+    });
+    S.entries.forEach(function (e) {
+      if (e.t !== 'in' || e.d.slice(0, 7) !== ym) return;
+      var m = map[e.d] || (map[e.d] = { p: 0, f: 0 }); m.f++; nw++;
     });
     var h = '';
     WD.forEach(function (w, i) { h += '<div class="wh' + (i === 0 ? ' su' : '') + '">' + w + '</div>'; });
@@ -867,33 +1057,70 @@ tr.badrow td{background:var(--out-bg)}
     for (var d = 1; d <= dim; d++) {
       var ds = ym + '-' + pad(d), m = map[ds], dow = (lead + d - 1) % 7;
       h += '<button type="button" class="cd' + (dow === 0 ? ' su' : '') + (ds === td ? ' today' : '') + (ds === selDay ? ' sel' : '') + '" data-day="' + ds + '"><span class="dn">' + d + '</span>' +
-        (showSon && isSon(ds) ? '<span class="ics" title="손 없는 날">🏠</span>' : '') + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
+        (showSon && isSon(ds) ? '<span class="ics" title="손 없는 날">🏠</span>' : '') + (m && m.r ? '<span class="bd rm">🔔' + m.r + '</span>' : '') + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
     }
     $('scCal').innerHTML = h;
-    $('scSum').textContent = np ? ymLabel(ym) + ' 예정 ' + np + '건' : ymLabel(ym) + ' 예정된 일정이 없습니다';
+    $('scSum').textContent = ymLabel(ym) + ' 예정 ' + np + '건 · 장부 작업 ' + nw + '건';
 
-    var over = S.sched.filter(function (z) { return !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
-    $('scBanner').innerHTML = over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '';
+    var over = S.sched.filter(function (z) { return z.k !== 'r' && !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
+    var als = alertList();
+    $('scBanner').innerHTML = (als.length ? '<div class="banner" style="margin-bottom:8px"><span>🔔 알림 ' + als.length + '건</span><button type="button" id="scAlert">보기</button></div>' : '') +
+      (over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '');
 
     var sonNote = showSon && isSon(selDay) ? '<p class="sub">🏠 손 없는 날 (음력 ' + lunarDay(selDay) + '일)</p>' : '';
-    var items = S.sched.filter(function (z) { return z.d === selDay; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : scKey(a) > scKey(b) ? 1 : a.id - b.id; });
-    if (!items.length) { $('scList').innerHTML = sonNote + '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
+    var works = S.entries.filter(function (e) { return e.t === 'in' && e.d === selDay; }).sort(function (a, b) { return a.id - b.id; });
+    var items = S.sched.filter(function (z) { return z.d === selDay && !z.done; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : scKey(a) > scKey(b) ? 1 : a.id - b.id; });
+    if (!items.length && !works.length) { $('scList').innerHTML = sonNote + '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
     $('scList').innerHTML = sonNote + '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
       var tags = [];
-      if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
+      if (z.k === 'r') tags.push('<span class="tag wait">🔔 알림 · ' + (z.lead > 0 ? z.lead + '일 전부터' : '당일') + '</span>');
+      else if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
       else if (z.d < td) tags.push('<span class="tag wait">입금 처리 전</span>');
       if (z.m) tags.push('<span class="memo">' + esc(z.m) + '</span>');
       return '<button type="button" class="row in" data-sid="' + z.id + '"><span class="nm">' + (z.tm ? '<span class="tm">' + esc(z.tm) + '</span>' : '') + esc(z.n) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>' +
-        (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>');
+        (z.k === 'r' ? '<button type="button" class="scgo" data-ok="' + z.id + '">확인 완료 (알림 끄기)</button>' : (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>'));
+    }).join('') + works.map(function (e) {
+      var tags = ['<span class="tag">장부 기록</span>'];
+      if (e.p === 'x') tags.push('<span class="tag wait">입금전</span>');
+      if (e.m) tags.push('<span class="memo">' + esc(e.m) + '</span>');
+      return '<button type="button" class="row in" data-eid="' + e.id + '"><span class="nm">' + esc(e.n) + '</span><span class="meta">' + tags.join('') + '</span></button>';
     }).join('') + '</div>';
   }
   $('scCal').addEventListener('click', function (ev) { var b = ev.target.closest('[data-day]'); if (b) { selDay = b.dataset.day; renderSched(); } });
-  $('scBanner').addEventListener('click', function (ev) { var b = ev.target.closest('#scOver'); if (b) { selDay = b.dataset.d; ym = selDay.slice(0, 7); render(); } });
+  $('scBanner').addEventListener('click', function (ev) { if (ev.target.closest('#scAlert')) { showAlerts(true); return; } var b = ev.target.closest('#scOver'); if (b) { selDay = b.dataset.d; ym = selDay.slice(0, 7); render(); } });
   $('scList').addEventListener('click', function (ev) {
+    var ok = ev.target.closest('[data-ok]'); if (ok) { var zz = findSc(+ok.dataset.ok); if (zz) { zz.done = true; save(); render(); toast('알림을 껐습니다'); } return; }
     var g = ev.target.closest('[data-go]'); if (g) { payFromSched(+g.dataset.go); return; }
+    var w = ev.target.closest('[data-eid]'); if (w) { openEntry(+w.dataset.eid); return; }
     var b = ev.target.closest('[data-sid]'); if (b) openSched(+b.dataset.sid);
   });
 
+  function syncKind() { var r = $('scKind').value === 'r'; $('scLeadW').hidden = !r; $('scNameL').textContent = r ? '제목 (예: 세금 내는 날)' : '업체 (동네)'; }
+  $('scKind').addEventListener('change', syncKind);
+  function dayDiff(ds) { var a = ds.split('-'), b = today().split('-'); return Math.round((Date.UTC(+a[0], +a[1] - 1, +a[2]) - Date.UTC(+b[0], +b[1] - 1, +b[2])) / 864e5); }
+  /* 알림 일정 중 알릴 때가 된 것(남은 날 <= 설정한 일수, 이미 지난 것 포함). 확인 완료한 것은 제외 */
+  function alertList() {
+    return S.sched.filter(function (z) { return z.k === 'r' && !z.done && dayDiff(z.d) <= (z.lead || 0); })
+      .sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
+  }
+  var lastAlert = 0;
+  function showAlerts(force) {
+    var list = alertList();
+    if (!list.length) { if (force) toast('알릴 일정이 없습니다'); return; }
+    if (!force && openId) return;
+    $('alList').innerHTML = list.map(function (z) {
+      var n = dayDiff(z.d), tag = n === 0 ? '오늘' : n > 0 ? 'D-' + n : Math.abs(n) + '일 지남';
+      return '<div class="alrow"><span class="dd' + (n < 0 ? ' over' : '') + '">' + tag + '</span><div class="tx"><b>' + esc(z.n) + '</b><span>' + Number(z.d.slice(5, 7)) + '월 ' + Number(z.d.slice(8, 10)) + '일 (' + wd(z.d) + ')' + (z.tm ? ' ' + esc(z.tm) : '') + (z.m ? ' · ' + esc(z.m) : '') + '</span></div><button type="button" data-aok="' + z.id + '">확인 완료</button></div>';
+    }).join('');
+    lastAlert = Date.now(); openSheet('shAlert');
+  }
+  $('alList').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-aok]'); if (!b) return;
+    var z = findSc(+b.dataset.aok); if (z) { z.done = true; save(); render(); }
+    if (alertList().length) showAlerts(true); else closeSheet();
+  });
+  $('alClose').addEventListener('click', closeSheet);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Date.now() - lastAlert > 30 * 60 * 1000) showAlerts(false); });
   function findSc(id) { return S.sched.filter(function (z) { return z.id === id; })[0]; }
   function openSched(id) {
     editingSc = id ? findSc(id) : null;
@@ -904,15 +1131,17 @@ tr.badrow td{background:var(--out-bg)}
     $('scName').value = z ? z.n : '';
     $('scMemo').value = z ? (z.m || '') : '';
     $('scEnd').value = ''; $('scEndW').hidden = !!z;
+    $('scKind').value = z && z.k === 'r' ? 'r' : 'w'; $('scLead').value = z && z.k === 'r' ? String(z.lead || 0) : '3'; syncKind();
     $('dlName').innerHTML = freq('in', 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
-    $('bScPay').hidden = !z || z.done; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
+    $('bScPay').hidden = !z || z.done || z.k === 'r'; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
     openSheet('shSched');
   }
   $('fSched').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var d = $('scDate').value, name = $('scName').value.trim();
     if (!d || !name) { toast('날짜와 업체를 확인해 주세요.'); return; }
-    var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim() };
+    var isR = $('scKind').value === 'r';
+    var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim(), k: isR ? 'r' : 'w', lead: isR ? parseInt($('scLead').value, 10) || 0 : 0 };
     var cnt = 1;
     if (editingSc) Object.assign(editingSc, rec);
     else {
@@ -925,7 +1154,7 @@ tr.badrow td{background:var(--out-bg)}
         days = [];
         for (; cur <= stop; cur.setDate(cur.getDate() + 1)) days.push(cur.getFullYear() + '-' + pad(cur.getMonth() + 1) + '-' + pad(cur.getDate()));
       }
-      days.forEach(function (dd) { S.sched.push({ id: S.sseq++, d: dd, tm: rec.tm, n: rec.n, m: rec.m, done: false }); });
+      days.forEach(function (dd) { S.sched.push({ id: S.sseq++, d: dd, tm: rec.tm, n: rec.n, m: rec.m, k: rec.k, lead: rec.lead, done: false }); });
       cnt = days.length;
     }
     save(); selDay = d; ym = d.slice(0, 7); closeSheet(); render(); toast(cnt > 1 ? cnt + '일 일정을 저장했습니다' : '일정을 저장했습니다');
@@ -944,12 +1173,14 @@ tr.badrow td{background:var(--out-bg)}
   }
 
   load();
-  S.sched = S.sched.filter(function (z) { return !(z.ic && !z.n); });
-  S.sched.forEach(function (z) { delete z.ic; });
   applyView();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
-  S.entries.forEach(function (e) { e.p = LedgerCore.normPay(e.p); if (e.t === 'in' && e.b == null) e.b = LedgerCore.parseBusy(e.m); });
+  normalizeState();
   render();
+  showAlerts(false);
+  $('cloudLogin').addEventListener('click', cloudLogin);
+  cloudUI();
+  startCloud();
 })();
 </script>
 
