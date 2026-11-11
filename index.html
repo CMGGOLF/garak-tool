@@ -214,14 +214,12 @@ tr.badrow td{background:var(--out-bg)}
 <main class="wrap" id="vLedger">
   <section class="tiles" id="tiles" aria-label="월 합계"></section>
   <p class="sub" id="sub"></p>
-  <div class="search"><input id="q" type="search" enterkeyhint="search" placeholder="업체·동네·메모 검색 (전체 기간)" aria-label="검색"></div>
   <div class="filters"><button type="button" class="chipbtn" id="outTg" aria-pressed="false">지출 내역 보기</button></div>
   <div id="banner"></div>
   <div id="list" style="display:flex;flex-direction:column;gap:12px"></div>
 </main>
 <main class="wrap" id="vSched" hidden>
   <div id="scBanner"></div>
-  <div class="filters"><button type="button" class="chipbtn" id="sonTg" aria-pressed="true">🏠 손 없는 날 표시</button></div>
   <section class="cal" id="scCal" aria-label="월 달력"></section>
   <p class="sub" id="scSum"></p>
   <div id="scList" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -763,10 +761,9 @@ tr.badrow td{background:var(--out-bg)}
   $('banner').addEventListener('click', function (ev) {
     if (ev.target.id === 'bnAdd') { var n = addFixed(ym); render(); toast('고정지출 ' + n + '건을 넣었습니다'); }
   });
-  $('monthSel').addEventListener('change', function () { ym = this.value; q = ''; $('q').value = ''; render(); window.scrollTo(0, 0); });
-  $('prev').addEventListener('click', function () { ym = addM(ym, -1); q = ''; $('q').value = ''; render(); });
-  $('next').addEventListener('click', function () { ym = addM(ym, 1); q = ''; $('q').value = ''; render(); });
-  $('q').addEventListener('input', function () { q = this.value; render(); });
+  $('monthSel').addEventListener('change', function () { ym = this.value; q = ''; render(); window.scrollTo(0, 0); });
+  $('prev').addEventListener('click', function () { ym = addM(ym, -1); q = ''; render(); });
+  $('next').addEventListener('click', function () { ym = addM(ym, 1); q = ''; render(); });
   $('outTg').addEventListener('click', function () {
     showOut = !showOut;
     try { localStorage.setItem('ledger.showOut', showOut ? '1' : '0'); } catch (e) { }
@@ -844,7 +841,7 @@ tr.badrow td{background:var(--out-bg)}
     if (editing) Object.assign(editing, rec); else { rec.id = S.seq++; S.entries.push(rec); }
     if (!editing && schedLink) { var sc0 = S.sched.filter(function (z) { return z.id === schedLink; })[0]; if (sc0) sc0.done = true; }
     schedLink = null;
-    save(); ym = d.slice(0, 7); q = ''; $('q').value = '';
+    save(); ym = d.slice(0, 7); q = '';
     if (more) {
       $('fName').value = ''; $('fAmt').value = ''; $('fExtra').value = ''; $('fBusy').value = ''; setPay('이'); $('fMemo').value = ''; updJob();
       setKind(kind); $('fName').focus(); toast('저장했습니다. 이어서 입력하세요.');
@@ -1002,7 +999,7 @@ tr.badrow td{background:var(--out-bg)}
     S.entries = S.entries.filter(function (e) { return !months[e.d.slice(0, 7)]; });
     pending.entries.forEach(function (e) { e.id = S.seq++; S.entries.push(e); });
     var n = pending.entries.length; pending = null;
-    save(); ym = latest || CUR; q = ''; $('q').value = ''; closeSheet(); render(); toast(n + '건을 가져왔습니다');
+    save(); ym = latest || CUR; q = ''; closeSheet(); render(); toast(n + '건을 가져왔습니다');
   });
 
   /* ---------- 일정(달력) ---------- */
@@ -1020,7 +1017,6 @@ tr.badrow td{background:var(--out-bg)}
   $('tabS').addEventListener('click', function () { setView('s'); });
 
   var showSon = true;
-  try { showSon = localStorage.getItem('ledger.son') !== '0'; } catch (e) { }
   var lunFmt = null, lunCache = {};
   try { lunFmt = new Intl.DateTimeFormat('en-u-ca-dangi', { day: 'numeric' }); } catch (e) { }
   function lunarDay(ds) {
@@ -1032,10 +1028,8 @@ tr.badrow td{background:var(--out-bg)}
   }
   /* 손 없는 날: 음력(한국 시각 기준) 9, 10, 19, 20, 29, 30일 */
   function isSon(ds) { var l = lunarDay(ds); return l === 9 || l === 10 || l === 19 || l === 20 || l === 29 || l === 30; }
-  $('sonTg').addEventListener('click', function () { showSon = !showSon; try { localStorage.setItem('ledger.son', showSon ? '1' : '0'); } catch (e) { } renderSched(); });
 
   function renderSched() {
-    $('sonTg').setAttribute('aria-pressed', showSon ? 'true' : 'false');
     var Y = +ym.slice(0, 4), M = +ym.slice(5);
     var dim = new Date(Y, M, 0).getDate(), lead = new Date(Y, M - 1, 1).getDay();
     if (!selDay || selDay.slice(0, 7) !== ym) selDay = ym === CUR ? today() : ym + '-01';
