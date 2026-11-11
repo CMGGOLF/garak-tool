@@ -102,8 +102,7 @@ button{cursor:pointer}
 .tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
 .tiles .tile{grid-column:span 2}
 .tiles .tile.total{grid-column:span 6}
-.tiles .tile.out,.tiles .tile.net{grid-column:span 3}
-.tiles .tile.cnt{grid-column:span 6}
+.tiles .tile.out,.tiles .tile.net,.tiles .tile.cnt{grid-column:span 2;padding:8px 10px}
 .tile.total b{font-size:min(20px,5vw)}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
 .tile .lb{display:block;font-size:12px;color:var(--muted);letter-spacing:.02em}
@@ -217,7 +216,6 @@ tr.badrow td{background:var(--out-bg)}
 
 <main class="wrap" id="vLedger">
   <section class="tiles" id="tiles" aria-label="월 합계"></section>
-  <p class="sub" id="sub"></p>
   <div class="filters"><button type="button" class="chipbtn" id="outTg" aria-pressed="false">지출 내역 보기</button></div>
   <div id="banner"></div>
   <div id="list" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -720,11 +718,8 @@ tr.badrow td{background:var(--out-bg)}
       '<div class="tile in"><span class="lb">추가금</span><b>' + fmt(t.busyAmt) + '</b></div>' +
       '<div class="tile in total"><span class="lb">총 합계 (기본+짐량+추가금)</span><b>' + fmt(t.inc) + '</b></div>' +
       '<div class="tile out"><span class="lb">지출</span><b>' + fmt(t.out) + '</b></div>' +
-      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계 (총 합계−지출)</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
+      '<div class="tile net' + (t.net < 0 ? ' neg' : '') + '"><span class="lb">총누계</span><b>' + (t.net < 0 ? '−' : '') + fmt(Math.abs(t.net)) + '</b></div>' +
       '<div class="tile cnt"><span class="lb">작업 건수</span><b>' + t.ni + '건</b></div>';
-    $('sub').textContent = searching
-      ? '“' + q.trim() + '” 검색 결과 ' + shown.length + '건 · 전체 기간'
-      : '총 합계 = 수입 + 짐량 + 추가금 · 총누계 = 총 합계 − 지출 · 지출 ' + t.no + '건';
 
     // 고정지출 안내
     var bn = '';
