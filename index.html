@@ -91,6 +91,7 @@ button{cursor:pointer}
 .cloudbar span{flex:1;min-width:0}
 .cloudbar button{border:1px solid var(--line);background:var(--surface);border-radius:999px;min-height:36px;padding:0 14px;font-size:13px;font-weight:600;color:var(--in)}
 .cd .bd.rm{background:var(--warn-bg);color:var(--warn)}
+.cd .bd.pn{background:var(--surface2);color:var(--fg)}
 .alrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}
 .alrow .tx{flex:1;min-width:0}.alrow b{display:block;font-size:16px;overflow-wrap:anywhere}.alrow span{font-size:13px;color:var(--muted)}
 .alrow .dd{font-family:var(--mono);font-weight:600;font-size:14px;border-radius:8px;padding:2px 8px;background:var(--warn-bg);color:var(--warn);white-space:nowrap}
@@ -254,6 +255,7 @@ tr.badrow td{background:var(--out-bg)}
       </div>
     </div>
     <label>메모<input id="fMemo"></label>
+    <button type="button" id="bToSched" class="btn" hidden>일정으로 옮기기 (장부에서는 삭제됨)</button>
     <div class="btns">
       <button type="button" id="bDel" class="danger" hidden>삭제</button>
       <button type="submit" id="bNext" hidden>저장하고 계속</button>
@@ -268,7 +270,7 @@ tr.badrow td{background:var(--out-bg)}
   <form id="fSched" autocomplete="off">
     <div class="two dt"><label>날짜<input id="scDate" type="date" required></label><label>시간<input id="scTime" type="time"></label></div>
     <label id="scEndW">끝나는 날 (여러 날 같은 일정이면 입력)<input id="scEnd" type="date"></label>
-    <label>종류<select id="scKind"><option value="w">작업 일정 (입금 처리 있음)</option><option value="r">알림 일정 (만료일, 세금 내는 날 등)</option></select></label>
+    <label>종류<select id="scKind"><option value="w">작업 일정 (입금 처리 있음)</option><option value="p">개인 일정 (알림 없음)</option><option value="r">알림 일정 (앱 열 때 알려줌)</option></select></label>
     <label id="scLeadW" hidden>며칠 전부터 알려줄까요<select id="scLead"><option value="0">당일부터</option><option value="1">1일 전부터</option><option value="3" selected>3일 전부터</option><option value="7">7일 전부터</option><option value="14">14일 전부터</option></select></label>
     <label><span id="scNameL">업체 (동네)</span><input id="scName" list="dlName" required></label>
     <label>메모<input id="scMemo" placeholder="주소, 층수, 연락처 등"></label>
@@ -828,7 +830,7 @@ tr.badrow td{background:var(--out-bg)}
       $('fExtra').value = pre.x !== '' && pre.x != null ? pre.x : ''; $('fBusy').value = pre.b ? pre.b : ''; $('fMemo').value = pre.m || ''; setPay('이');
     }
     updJob();
-    $('bDel').hidden = !e; $('bNext').hidden = !!e || !!schedLink;
+    $('bDel').hidden = !e; $('bNext').hidden = !!e || !!schedLink; $('bToSched').hidden = !e;
     $('tIn').disabled = $('tOut').disabled = false;
     openSheet('shEntry');
   }
@@ -953,7 +955,7 @@ tr.badrow td{background:var(--out-bg)}
       if (Array.isArray(o.fixed)) S.fixed = o.fixed.filter(function (f) { return f && f.n; }).map(function (f) { return { n: String(f.n), a: Number(f.a) || 0, m: String(f.m || '') }; });
       if (Array.isArray(o.sched)) {
         var ss = [], sq = 1;
-        o.sched.forEach(function (z) { if (z && /^\d{4}-\d{2}-\d{2}$/.test(z.d)) ss.push({ id: sq++, d: z.d, tm: String(z.tm || ''), n: String(z.n || ''), m: String(z.m || ''), k: z.k === 'r' ? 'r' : 'w', lead: Number(z.lead) || 0, done: !!z.done }); });
+        o.sched.forEach(function (z) { if (z && /^\d{4}-\d{2}-\d{2}$/.test(z.d)) ss.push({ id: sq++, d: z.d, tm: String(z.tm || ''), n: String(z.n || ''), m: String(z.m || ''), k: z.k === 'r' ? 'r' : z.k === 'p' ? 'p' : 'w', lead: Number(z.lead) || 0, done: !!z.done }); });
         S.sched = ss; S.sseq = sq;
       }
       save(); closeSheet(); render(); toast('복원했습니다');
@@ -1039,12 +1041,13 @@ tr.badrow td{background:var(--out-bg)}
     if (!selDay || selDay.slice(0, 7) !== ym) selDay = ym === CUR ? today() : ym + '-01';
     var map = {}, np = 0, nw = 0, td = today();
     S.sched.forEach(function (z) {
-      if (z.k !== 'r' || z.done || z.d.slice(0, 7) !== ym) return;
-      var m = map[z.d] || (map[z.d] = { p: 0, f: 0, r: 0 }); m.r = (m.r || 0) + 1;
+      if ((z.k !== 'r' && z.k !== 'p') || z.done || z.d.slice(0, 7) !== ym) return;
+      var m = map[z.d] || (map[z.d] = { p: 0, f: 0, r: 0 });
+      if (z.k === 'r') m.r = (m.r || 0) + 1; else m.q = (m.q || 0) + 1;
     });
     /* 입금 처리한 일정은 장부 내역이 대신 보이므로 목록과 건수에서 뺌 */
     S.sched.forEach(function (z) {
-      if (z.k === 'r' || z.d.slice(0, 7) !== ym || z.done) return;
+      if (z.k === 'r' || z.k === 'p' || z.d.slice(0, 7) !== ym || z.done) return;
       var m = map[z.d] || (map[z.d] = { p: 0, f: 0 }); m.p++; np++;
     });
     S.entries.forEach(function (e) {
@@ -1057,12 +1060,12 @@ tr.badrow td{background:var(--out-bg)}
     for (var d = 1; d <= dim; d++) {
       var ds = ym + '-' + pad(d), m = map[ds], dow = (lead + d - 1) % 7;
       h += '<button type="button" class="cd' + (dow === 0 ? ' su' : '') + (ds === td ? ' today' : '') + (ds === selDay ? ' sel' : '') + '" data-day="' + ds + '"><span class="dn">' + d + '</span>' +
-        (showSon && isSon(ds) ? '<span class="ics" title="손 없는 날">🏠</span>' : '') + (m && m.r ? '<span class="bd rm">🔔' + m.r + '</span>' : '') + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
+        (showSon && isSon(ds) ? '<span class="ics" title="손 없는 날">🏠</span>' : '') + (m && m.r ? '<span class="bd rm">🔔' + m.r + '</span>' : '') + (m && m.q ? '<span class="bd pn">📌' + m.q + '</span>' : '') + (m && m.p ? '<span class="bd">' + m.p + '건</span>' : '') + (m && m.f ? '<span class="bd fin">✓' + m.f + '</span>' : '') + '</button>';
     }
     $('scCal').innerHTML = h;
     $('scSum').textContent = ymLabel(ym) + ' 예정 ' + np + '건 · 장부 작업 ' + nw + '건';
 
-    var over = S.sched.filter(function (z) { return z.k !== 'r' && !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
+    var over = S.sched.filter(function (z) { return (z.k || 'w') === 'w' && !z.done && z.d < td; }).sort(function (a, b) { return scKey(a) < scKey(b) ? -1 : 1; });
     var als = alertList();
     $('scBanner').innerHTML = (als.length ? '<div class="banner" style="margin-bottom:8px"><span>🔔 알림 ' + als.length + '건</span><button type="button" id="scAlert">보기</button></div>' : '') +
       (over.length ? '<div class="banner"><span>입금 처리 안 한 지난 일정 ' + over.length + '건</span><button type="button" id="scOver" data-d="' + over[0].d + '">보기</button></div>' : '');
@@ -1073,12 +1076,13 @@ tr.badrow td{background:var(--out-bg)}
     if (!items.length && !works.length) { $('scList').innerHTML = sonNote + '<div class="empty"><h2>' + Number(selDay.slice(5, 7)) + '월 ' + Number(selDay.slice(8, 10)) + '일 (' + wd(selDay) + ') 일정 없음</h2><p>오른쪽 아래 + 버튼으로 이 날짜에 일정을 추가합니다.</p></div>'; return; }
     $('scList').innerHTML = sonNote + '<div class="day">' + dayHead(selDay, false, 0) + items.map(function (z) {
       var tags = [];
-      if (z.k === 'r') tags.push('<span class="tag wait">🔔 알림 · ' + (z.lead > 0 ? z.lead + '일 전부터' : '당일') + '</span>');
+      if (z.k === 'p') tags.push('<span class="tag">📌 개인 일정</span>');
+      else if (z.k === 'r') tags.push('<span class="tag wait">🔔 알림 · ' + (z.lead > 0 ? z.lead + '일 전부터' : '당일') + '</span>');
       else if (z.done) tags.push('<span class="tag">입금 처리 완료</span>');
       else if (z.d < td) tags.push('<span class="tag wait">입금 처리 전</span>');
       if (z.m) tags.push('<span class="memo">' + esc(z.m) + '</span>');
       return '<button type="button" class="row in" data-sid="' + z.id + '"><span class="nm">' + (z.tm ? '<span class="tm">' + esc(z.tm) + '</span>' : '') + esc(z.n) + '</span>' + (tags.length ? '<span class="meta">' + tags.join('') + '</span>' : '') + '</button>' +
-        (z.k === 'r' ? '<button type="button" class="scgo" data-ok="' + z.id + '">확인 완료 (알림 끄기)</button>' : (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>'));
+        (z.k === 'p' ? '' : z.k === 'r' ? '<button type="button" class="scgo" data-ok="' + z.id + '">확인 완료 (알림 끄기)</button>' : (z.done ? '' : '<button type="button" class="scgo" data-go="' + z.id + '">작업 끝 · 입금 처리</button>'));
     }).join('') + works.map(function (e) {
       var tags = ['<span class="tag">장부 기록</span>'];
       if (e.p === 'x') tags.push('<span class="tag wait">입금전</span>');
@@ -1095,7 +1099,7 @@ tr.badrow td{background:var(--out-bg)}
     var b = ev.target.closest('[data-sid]'); if (b) openSched(+b.dataset.sid);
   });
 
-  function syncKind() { var r = $('scKind').value === 'r'; $('scLeadW').hidden = !r; $('scNameL').textContent = r ? '제목 (예: 세금 내는 날)' : '업체 (동네)'; }
+  function syncKind() { var k = $('scKind').value; $('scLeadW').hidden = k !== 'r'; $('scNameL').textContent = k === 'w' ? '업체 (동네)' : '제목 (예: 병원 예약, 세금 내는 날)'; }
   $('scKind').addEventListener('change', syncKind);
   function dayDiff(ds) { var a = ds.split('-'), b = today().split('-'); return Math.round((Date.UTC(+a[0], +a[1] - 1, +a[2]) - Date.UTC(+b[0], +b[1] - 1, +b[2])) / 864e5); }
   /* 알림 일정 중 알릴 때가 된 것(남은 날 <= 설정한 일수, 이미 지난 것 포함). 확인 완료한 것은 제외 */
@@ -1121,9 +1125,16 @@ tr.badrow td{background:var(--out-bg)}
   });
   $('alClose').addEventListener('click', closeSheet);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Date.now() - lastAlert > 30 * 60 * 1000) showAlerts(false); });
+  $('bToSched').addEventListener('click', function () {
+    if (!editing) return;
+    var e = editing; closeSheet();
+    openSched(null, { d: e.d, n: e.n, m: e.m, eid: e.id });
+  });
   function findSc(id) { return S.sched.filter(function (z) { return z.id === id; })[0]; }
-  function openSched(id) {
+  var movingEid = null;
+  function openSched(id, pre) {
     editingSc = id ? findSc(id) : null;
+    movingEid = pre ? pre.eid : null;
     var z = editingSc;
     $('scTitle').textContent = z ? '일정 수정' : '일정 추가';
     $('scDate').value = z ? z.d : (selDay || today());
@@ -1131,17 +1142,19 @@ tr.badrow td{background:var(--out-bg)}
     $('scName').value = z ? z.n : '';
     $('scMemo').value = z ? (z.m || '') : '';
     $('scEnd').value = ''; $('scEndW').hidden = !!z;
-    $('scKind').value = z && z.k === 'r' ? 'r' : 'w'; $('scLead').value = z && z.k === 'r' ? String(z.lead || 0) : '3'; syncKind();
+    $('scKind').value = z ? (z.k === 'r' ? 'r' : z.k === 'p' ? 'p' : 'w') : (pre ? 'p' : 'w'); $('scLead').value = z && z.k === 'r' ? String(z.lead || 0) : '3';
+    if (pre) { $('scDate').value = pre.d; $('scName').value = pre.n; $('scMemo').value = pre.m || ''; $('scTitle').textContent = '일정으로 옮기기'; }
+    syncKind();
     $('dlName').innerHTML = freq('in', 'n').slice(0, 200).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
-    $('bScPay').hidden = !z || z.done || z.k === 'r'; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
+    $('bScPay').hidden = !z || z.done || z.k === 'r' || z.k === 'p'; $('bScUndo').hidden = !z || !z.done; $('bScDel').hidden = !z;
     openSheet('shSched');
   }
   $('fSched').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var d = $('scDate').value, name = $('scName').value.trim();
     if (!d || !name) { toast('날짜와 업체를 확인해 주세요.'); return; }
-    var isR = $('scKind').value === 'r';
-    var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim(), k: isR ? 'r' : 'w', lead: isR ? parseInt($('scLead').value, 10) || 0 : 0 };
+    var kd = $('scKind').value, isR = kd === 'r';
+    var rec = { d: d, tm: $('scTime').value, n: name, m: $('scMemo').value.trim(), k: kd === 'r' ? 'r' : kd === 'p' ? 'p' : 'w', lead: isR ? parseInt($('scLead').value, 10) || 0 : 0 };
     var cnt = 1;
     if (editingSc) Object.assign(editingSc, rec);
     else {
@@ -1156,6 +1169,7 @@ tr.badrow td{background:var(--out-bg)}
       }
       days.forEach(function (dd) { S.sched.push({ id: S.sseq++, d: dd, tm: rec.tm, n: rec.n, m: rec.m, k: rec.k, lead: rec.lead, done: false }); });
       cnt = days.length;
+      if (movingEid != null) { S.entries = S.entries.filter(function (e) { return e.id !== movingEid; }); movingEid = null; }
     }
     save(); selDay = d; ym = d.slice(0, 7); closeSheet(); render(); toast(cnt > 1 ? cnt + '일 일정을 저장했습니다' : '일정을 저장했습니다');
   });
